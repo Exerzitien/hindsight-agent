@@ -1,0 +1,270 @@
+{
+  "profile_version": "2.0",
+  "profile_verified_on": "2026-09-01",
+  "data_classification": "synthetic_standard_aligned_demo",
+  "factory_profile": {
+    "site_code": "CN-DEMO-METAL-01",
+    "country_code": "CN",
+    "timezone": "Asia/Shanghai",
+    "iec_62264_level": "site"
+  },
+  "standards": [
+    {
+      "id": "iso-45001-2018",
+      "code": "ISO 45001:2018",
+      "title": "Occupational health and safety management systems - Requirements with guidance for use",
+      "edition": "2018",
+      "publisher": "ISO",
+      "status": "published_current_at_profile_date",
+      "source_url": "https://www.iso.org/standard/63787.html",
+      "alignment_scope": "Hazard identification, OH&S risk assessment, operational controls, monitoring, corrective action and continual improvement."
+    },
+    {
+      "id": "iso-12100-2010",
+      "code": "ISO 12100:2010",
+      "title": "Safety of machinery - General principles for design - Risk assessment and risk reduction",
+      "edition": "2010",
+      "publisher": "ISO",
+      "status": "published_current_at_profile_date",
+      "source_url": "https://www.iso.org/standard/51528.html",
+      "alignment_scope": "Machine life-cycle phase, operating mode, hazardous situation, risk estimation, risk reduction and verification."
+    },
+    {
+      "id": "iso-31000-2018",
+      "code": "ISO 31000:2018",
+      "title": "Risk management - Guidelines",
+      "edition": "2018",
+      "publisher": "ISO",
+      "status": "published_current_at_profile_date",
+      "source_url": "https://www.iso.org/standard/65694.html",
+      "alignment_scope": "Risk identification, analysis, evaluation, treatment, monitoring and review workflow."
+    },
+    {
+      "id": "iso-55000-2024",
+      "code": "ISO 55000:2024",
+      "title": "Asset management - Vocabulary, overview and principles",
+      "edition": "2024",
+      "publisher": "ISO",
+      "status": "published_current_at_profile_date",
+      "source_url": "https://www.iso.org/standard/83053.html",
+      "alignment_scope": "Asset identity, ownership, criticality, life-cycle status, inspection and data provenance."
+    },
+    {
+      "id": "iec-62264-1-2013",
+      "code": "IEC 62264-1:2013",
+      "title": "Enterprise-control system integration - Part 1: Models and terminology",
+      "edition": "2013",
+      "publisher": "IEC",
+      "status": "published",
+      "source_url": "https://webstore.iec.ch/en/publication/6675",
+      "alignment_scope": "Manufacturing equipment hierarchy represented as site, area and work unit."
+    }
+  ],
+  "schema_standard_mappings": [
+    {
+      "id": "map-manufacturing-hierarchy",
+      "standard_id": "iec-62264-1-2013",
+      "schema_object": "factories, areas, equipment",
+      "concept": "manufacturing equipment hierarchy",
+      "alignment_note": "The demo factory is a site, production areas are areas, and individual assets are work units.",
+      "claim_level": "concept_alignment"
+    },
+    {
+      "id": "map-asset-register",
+      "standard_id": "iso-55000-2024",
+      "schema_object": "equipment",
+      "concept": "asset register and life-cycle information",
+      "alignment_note": "Assets carry identity, manufacturer, model, serial number, owner, criticality, commission date, status and inspection dates.",
+      "claim_level": "concept_alignment"
+    },
+    {
+      "id": "map-hazard-risk",
+      "standard_id": "iso-45001-2018",
+      "schema_object": "risk_assessments",
+      "concept": "hazard identification and OH&S risk assessment",
+      "alignment_note": "Each risk record connects a work unit, task, exposed role, hazard, hazardous situation and documented review dates.",
+      "claim_level": "concept_alignment"
+    },
+    {
+      "id": "map-machinery-risk",
+      "standard_id": "iso-12100-2010",
+      "schema_object": "risk_assessments, risk_assessment_controls",
+      "concept": "machinery risk assessment and risk reduction",
+      "alignment_note": "Records distinguish life-cycle phase and operating mode, then compare initial and residual risk after controls.",
+      "claim_level": "concept_alignment"
+    },
+    {
+      "id": "map-control-hierarchy",
+      "standard_id": "iso-45001-2018",
+      "schema_object": "control_hierarchy_levels, safety_controls",
+      "concept": "hierarchy of controls",
+      "alignment_note": "Controls use the ordered categories elimination, substitution, engineering, administrative and PPE.",
+      "claim_level": "concept_alignment"
+    },
+    {
+      "id": "map-risk-process",
+      "standard_id": "iso-31000-2018",
+      "schema_object": "risk_assessments, corrective_actions",
+      "concept": "risk treatment, monitoring and review",
+      "alignment_note": "Risk status, acceptance, actions, owners, due dates and review dates form a traceable risk workflow.",
+      "claim_level": "concept_alignment"
+    },
+    {
+      "id": "map-control-assurance",
+      "standard_id": "iso-45001-2018",
+      "schema_object": "control_verifications",
+      "concept": "performance monitoring and operational control assurance",
+      "alignment_note": "Control checks record result, evidence, verifier, findings and next due date.",
+      "claim_level": "concept_alignment"
+    },
+    {
+      "id": "map-corrective-action",
+      "standard_id": "iso-45001-2018",
+      "schema_object": "corrective_actions",
+      "concept": "corrective action and continual improvement",
+      "alignment_note": "Control exceptions generate owned and time-bound corrective actions.",
+      "claim_level": "concept_alignment"
+    }
+  ],
+  "control_hierarchy_levels": [
+    {"code": "elimination", "rank": 1, "name_en": "Elimination", "name_zh": "消除", "principle_en": "Physically remove the hazard.", "principle_zh": "从源头彻底移除危险。"},
+    {"code": "substitution", "rank": 2, "name_en": "Substitution", "name_zh": "替代", "principle_en": "Replace the hazard with a safer alternative.", "principle_zh": "用更安全的材料、设备或工艺替代危险。"},
+    {"code": "engineering", "rank": 3, "name_en": "Engineering control", "name_zh": "工程控制", "principle_en": "Isolate people from the hazard by design.", "principle_zh": "通过设计使人员与危险隔离。"},
+    {"code": "administrative", "rank": 4, "name_en": "Administrative control", "name_zh": "管理控制", "principle_en": "Change how work is organized or performed.", "principle_zh": "通过程序、培训和工作组织降低暴露。"},
+    {"code": "ppe", "rank": 5, "name_en": "Personal protective equipment", "name_zh": "个人防护装备", "principle_en": "Protect the worker with personal equipment.", "principle_zh": "使用个人防护装备保护作业人员。"}
+  ],
+  "risk_matrix_bands": [
+    {"code": "low", "minimum_score": 1, "maximum_score": 4, "name_en": "Low", "name_zh": "低", "response_en": "Maintain controls and monitor.", "response_zh": "保持控制并持续监测。"},
+    {"code": "medium", "minimum_score": 5, "maximum_score": 9, "name_en": "Medium", "name_zh": "中", "response_en": "Manage with documented controls and scheduled review.", "response_zh": "采用书面控制措施并按期复审。"},
+    {"code": "high", "minimum_score": 10, "maximum_score": 16, "name_en": "High", "name_zh": "高", "response_en": "Additional treatment is required before routine acceptance.", "response_zh": "常规接受前必须采取额外风险处置。"},
+    {"code": "critical", "minimum_score": 17, "maximum_score": 25, "name_en": "Critical", "name_zh": "重大", "response_en": "Stop or restrict work until risk is reduced.", "response_zh": "降低风险前应停止或限制作业。"}
+  ],
+  "asset_profiles": {
+    "press-01": {"manufacturer": "Demo Press Systems", "model_number": "MP-200", "serial_number": "SYN-MP200-180041", "commissioned_on": "2018-04-16", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-production-supervisor", "inspection_interval_days": 90, "last_inspected_on": "2026-08-15", "next_inspection_due": "2026-11-13"},
+    "press-02": {"manufacturer": "Demo Press Systems", "model_number": "MP-150", "serial_number": "SYN-MP150-190027", "commissioned_on": "2019-07-08", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-production-supervisor", "inspection_interval_days": 90, "last_inspected_on": "2026-08-15", "next_inspection_due": "2026-11-13"},
+    "press-03": {"manufacturer": "Demo Forming Technologies", "model_number": "HP-100", "serial_number": "SYN-HP100-210012", "commissioned_on": "2021-03-22", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-production-supervisor", "inspection_interval_days": 90, "last_inspected_on": "2026-08-15", "next_inspection_due": "2026-11-13"},
+    "weld-01": {"manufacturer": "Demo Arc Equipment", "model_number": "GMAW-400", "serial_number": "SYN-G400-170118", "commissioned_on": "2017-09-11", "lifecycle_status": "active", "criticality_class": "B", "owner_role_id": "role-production-supervisor", "inspection_interval_days": 180, "last_inspected_on": "2026-08-10", "next_inspection_due": "2027-02-06"},
+    "weld-02": {"manufacturer": "Demo Arc Equipment", "model_number": "GMAW-400", "serial_number": "SYN-G400-170119", "commissioned_on": "2017-09-11", "lifecycle_status": "active", "criticality_class": "B", "owner_role_id": "role-production-supervisor", "inspection_interval_days": 180, "last_inspected_on": "2026-08-10", "next_inspection_due": "2027-02-06"},
+    "weld-03": {"manufacturer": "Demo Robotics Integration", "model_number": "RWC-6A", "serial_number": "SYN-RWC6A-220031", "commissioned_on": "2022-05-16", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-production-supervisor", "inspection_interval_days": 90, "last_inspected_on": "2026-08-12", "next_inspection_due": "2026-11-10"},
+    "weld-04": {"manufacturer": "Demo Robotics Integration", "model_number": "RWC-6A", "serial_number": "SYN-RWC6A-220032", "commissioned_on": "2022-05-16", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-production-supervisor", "inspection_interval_days": 90, "last_inspected_on": "2026-08-12", "next_inspection_due": "2026-11-10"},
+    "forklift-01": {"manufacturer": "Demo Material Handling", "model_number": "EF-25", "serial_number": "SYN-EF25-200077", "commissioned_on": "2020-02-03", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-warehouse", "inspection_interval_days": 90, "last_inspected_on": "2026-08-20", "next_inspection_due": "2026-11-18"},
+    "forklift-02": {"manufacturer": "Demo Material Handling", "model_number": "PF-30", "serial_number": "SYN-PF30-160044", "commissioned_on": "2016-11-14", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-warehouse", "inspection_interval_days": 90, "last_inspected_on": "2026-08-20", "next_inspection_due": "2026-11-18"},
+    "rack-01": {"manufacturer": "Demo Storage Systems", "model_number": "PR-5000", "serial_number": "SYN-PR5K-150008", "commissioned_on": "2015-06-01", "lifecycle_status": "active", "criticality_class": "B", "owner_role_id": "role-warehouse", "inspection_interval_days": 365, "last_inspected_on": "2026-08-05", "next_inspection_due": "2027-08-05"},
+    "forklift-03": {"manufacturer": "Demo Material Handling", "model_number": "EF-25", "serial_number": "SYN-EF25-200081", "commissioned_on": "2020-02-03", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-dock", "inspection_interval_days": 90, "last_inspected_on": "2026-08-20", "next_inspection_due": "2026-11-18"},
+    "dock-leveler-01": {"manufacturer": "Demo Dock Systems", "model_number": "HDL-20", "serial_number": "SYN-HDL20-180015", "commissioned_on": "2018-10-29", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-dock", "inspection_interval_days": 90, "last_inspected_on": "2026-08-18", "next_inspection_due": "2026-11-16"},
+    "trailer-restraint-01": {"manufacturer": "Demo Dock Systems", "model_number": "VR-12", "serial_number": "SYN-VR12-180016", "commissioned_on": "2018-10-29", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-dock", "inspection_interval_days": 90, "last_inspected_on": "2026-08-18", "next_inspection_due": "2026-11-16"},
+    "lathe-01": {"manufacturer": "Demo Machine Tools", "model_number": "EL-1660", "serial_number": "SYN-EL1660-140021", "commissioned_on": "2014-08-25", "lifecycle_status": "active", "criticality_class": "B", "owner_role_id": "role-maintenance", "inspection_interval_days": 180, "last_inspected_on": "2026-08-08", "next_inspection_due": "2027-02-04"},
+    "grinder-01": {"manufacturer": "Demo Machine Tools", "model_number": "BG-300", "serial_number": "SYN-BG300-190014", "commissioned_on": "2019-01-21", "lifecycle_status": "active", "criticality_class": "B", "owner_role_id": "role-maintenance", "inspection_interval_days": 180, "last_inspected_on": "2026-08-08", "next_inspection_due": "2027-02-04"},
+    "drill-press-01": {"manufacturer": "Demo Machine Tools", "model_number": "DP-40", "serial_number": "SYN-DP40-180033", "commissioned_on": "2018-01-15", "lifecycle_status": "active", "criticality_class": "B", "owner_role_id": "role-maintenance", "inspection_interval_days": 180, "last_inspected_on": "2026-08-08", "next_inspection_due": "2027-02-04"},
+    "solvent-tank-01": {"manufacturer": "Demo Process Equipment", "model_number": "DT-1500", "serial_number": "SYN-DT1500-200009", "commissioned_on": "2020-09-07", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-chemical", "inspection_interval_days": 90, "last_inspected_on": "2026-08-22", "next_inspection_due": "2026-11-20"},
+    "paint-mix-01": {"manufacturer": "Demo Process Equipment", "model_number": "PM-500", "serial_number": "SYN-PM500-200010", "commissioned_on": "2020-09-07", "lifecycle_status": "active", "criticality_class": "A", "owner_role_id": "role-chemical", "inspection_interval_days": 90, "last_inspected_on": "2026-08-22", "next_inspection_due": "2026-11-20"},
+    "paint-storage-01": {"manufacturer": "Demo Storage Systems", "model_number": "BCR-12", "serial_number": "SYN-BCR12-200011", "commissioned_on": "2020-09-07", "lifecycle_status": "active", "criticality_class": "B", "owner_role_id": "role-chemical", "inspection_interval_days": 180, "last_inspected_on": "2026-08-22", "next_inspection_due": "2027-02-18"},
+    "flammable-cabinet-01": {"manufacturer": "Demo Safety Storage", "model_number": "FLC-90", "serial_number": "SYN-FLC90-210006", "commissioned_on": "2021-02-01", "lifecycle_status": "active", "criticality_class": "B", "owner_role_id": "role-chemical", "inspection_interval_days": 180, "last_inspected_on": "2026-08-22", "next_inspection_due": "2027-02-18"}
+  },
+  "control_profiles": {
+    "control-guard": {"hierarchy_code": "engineering", "performance_requirement": "Guard remains secured and prevents access to hazardous motion.", "verification_method": "Visual and functional guard inspection", "verification_interval_days": 90},
+    "control-light-curtain": {"hierarchy_code": "engineering", "performance_requirement": "Interruption of the sensing field stops hazardous motion before access.", "verification_method": "Documented stop-time and trip test", "verification_interval_days": 90},
+    "control-estop": {"hierarchy_code": "engineering", "performance_requirement": "Actuation initiates the defined emergency stop function.", "verification_method": "Functional emergency-stop test", "verification_interval_days": 30},
+    "control-loto": {"hierarchy_code": "administrative", "performance_requirement": "All hazardous energy is identified, isolated and verified before intervention.", "verification_method": "Procedure audit and authorized-worker observation", "verification_interval_days": 365},
+    "control-weld-vent": {"hierarchy_code": "engineering", "performance_requirement": "Local exhaust captures contaminant at source with adequate airflow.", "verification_method": "Airflow measurement and capture observation", "verification_interval_days": 180},
+    "control-weld-screen": {"hierarchy_code": "engineering", "performance_requirement": "Screen blocks direct arc radiation and contains routine sparks.", "verification_method": "Visual condition and placement inspection", "verification_interval_days": 180},
+    "control-robot-interlock": {"hierarchy_code": "engineering", "performance_requirement": "Opening an interlocked access point removes hazardous automatic motion.", "verification_method": "Interlock and restart-inhibit functional test", "verification_interval_days": 90},
+    "control-seatbelt": {"hierarchy_code": "engineering", "performance_requirement": "Restraint is serviceable and used by the operator.", "verification_method": "Pre-use condition and latch test", "verification_interval_days": 30},
+    "control-pedestrian": {"hierarchy_code": "engineering", "performance_requirement": "Physical or marked routes maintain separation between vehicles and pedestrians.", "verification_method": "Route, barrier and visibility inspection", "verification_interval_days": 90},
+    "control-dock-restraint": {"hierarchy_code": "engineering", "performance_requirement": "Trailer remains secured and signal status agrees with restraint state.", "verification_method": "Restraint engagement and signal functional test", "verification_interval_days": 30},
+    "control-chock": {"hierarchy_code": "administrative", "performance_requirement": "Chocks are available, serviceable and placed according to procedure.", "verification_method": "Condition check and work-practice observation", "verification_interval_days": 30},
+    "control-tool-rest": {"hierarchy_code": "engineering", "performance_requirement": "Tool rest is secure and adjusted to the defined maximum gap.", "verification_method": "Gap measurement and condition inspection", "verification_interval_days": 30},
+    "control-chuck-guard": {"hierarchy_code": "engineering", "performance_requirement": "Guard limits access to rotating chuck and is serviceable.", "verification_method": "Visual and functional guard inspection", "verification_interval_days": 90},
+    "control-flammable-cabinet": {"hierarchy_code": "engineering", "performance_requirement": "Cabinet is intact, closed, labeled and used within its rated capacity.", "verification_method": "Storage condition and capacity inspection", "verification_interval_days": 90},
+    "control-bond-ground": {"hierarchy_code": "engineering", "performance_requirement": "Bonding path is present and electrically continuous during transfer.", "verification_method": "Continuity test and transfer observation", "verification_interval_days": 90}
+  },
+  "hazard_risk_defaults": {
+    "haz-crush": {"likelihood": 4, "severity": 5, "preferred_tasks": ["task-jam-clear", "task-maintenance", "task-dock-leveler"], "control_candidates": ["control-guard", "control-light-curtain", "control-robot-interlock", "control-dock-restraint", "control-pedestrian", "control-loto"]},
+    "haz-caught-in": {"likelihood": 4, "severity": 4, "preferred_tasks": ["task-jam-clear", "task-maintenance", "task-turning", "task-drilling"], "control_candidates": ["control-guard", "control-light-curtain", "control-robot-interlock", "control-chuck-guard", "control-tool-rest", "control-loto"]},
+    "haz-amputation": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-stamping", "task-jam-clear", "task-die-change"], "control_candidates": ["control-guard", "control-light-curtain", "control-loto"]},
+    "haz-unexpected-startup": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-press-maintenance", "task-robot-maintenance", "task-maintenance", "task-jam-clear"], "control_candidates": ["control-loto", "control-robot-interlock", "control-estop"]},
+    "haz-electrical": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-maintenance", "task-press-maintenance", "task-robot-maintenance", "task-battery-charging"], "control_candidates": ["control-loto", "control-estop"]},
+    "haz-burn": {"likelihood": 3, "severity": 4, "preferred_tasks": ["task-welding", "task-weld-cleaning"], "control_candidates": ["control-weld-screen"]},
+    "haz-welding-fume": {"likelihood": 4, "severity": 3, "preferred_tasks": ["task-welding"], "control_candidates": ["control-weld-vent"]},
+    "haz-fire": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-welding", "task-paint-mixing", "task-solvent-transfer"], "control_candidates": ["control-weld-vent", "control-flammable-cabinet", "control-bond-ground", "control-estop"]},
+    "haz-arc-radiation": {"likelihood": 4, "severity": 3, "preferred_tasks": ["task-welding"], "control_candidates": ["control-weld-screen", "control-robot-interlock"]},
+    "haz-struck-by": {"likelihood": 4, "severity": 4, "preferred_tasks": ["task-forklift-driving", "task-pallet-stacking", "task-grinding"], "control_candidates": ["control-pedestrian", "control-seatbelt", "control-guard", "control-tool-rest"]},
+    "haz-collision": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-forklift-driving", "task-loading"], "control_candidates": ["control-pedestrian", "control-seatbelt"]},
+    "haz-tip-over": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-forklift-driving", "task-loading"], "control_candidates": ["control-seatbelt", "control-pedestrian"]},
+    "haz-falling-object": {"likelihood": 3, "severity": 4, "preferred_tasks": ["task-pallet-stacking", "task-loading"], "control_candidates": ["control-pedestrian", "control-seatbelt"]},
+    "haz-dock-fall": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-trailer-entry", "task-loading", "task-dock-leveler"], "control_candidates": ["control-dock-restraint", "control-chock", "control-pedestrian"]},
+    "haz-trailer-movement": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-trailer-entry", "task-loading"], "control_candidates": ["control-dock-restraint", "control-chock"]},
+    "haz-entanglement": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-turning", "task-drilling", "task-maintenance"], "control_candidates": ["control-chuck-guard", "control-guard", "control-loto", "control-estop"]},
+    "haz-laceration": {"likelihood": 4, "severity": 3, "preferred_tasks": ["task-grinding", "task-drilling", "task-turning"], "control_candidates": ["control-guard", "control-tool-rest", "control-chuck-guard"]},
+    "haz-chemical": {"likelihood": 4, "severity": 4, "preferred_tasks": ["task-solvent-transfer", "task-paint-mixing", "task-spill-cleanup"], "control_candidates": ["control-weld-vent", "control-flammable-cabinet", "control-bond-ground"]},
+    "haz-flammable-vapor": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-solvent-transfer", "task-paint-mixing", "task-chemical-inventory"], "control_candidates": ["control-weld-vent", "control-flammable-cabinet", "control-bond-ground"]},
+    "haz-spill-slip": {"likelihood": 4, "severity": 3, "preferred_tasks": ["task-spill-cleanup", "task-solvent-transfer", "task-paint-mixing"], "control_candidates": ["control-flammable-cabinet", "control-bond-ground"]},
+    "haz-compressed-gas": {"likelihood": 3, "severity": 5, "preferred_tasks": ["task-cylinder-change", "task-welding"], "control_candidates": ["control-weld-screen", "control-loto"]}
+  },
+  "verification_exceptions": [
+    {
+      "equipment_id": "press-02",
+      "safety_control_id": "control-light-curtain",
+      "result": "conditional",
+      "finding_en": "The trip function passed, but the documented stop-time measurement is due for renewal.",
+      "finding_zh": "触发停机功能通过，但书面停止时间测量已到期，需要重新测试。",
+      "action_code": "CA-2026-001",
+      "action_title_en": "Renew press light-curtain stop-time test",
+      "action_title_zh": "重新执行压力机光幕停止时间测试",
+      "action_description_en": "Measure and document stopping time, then confirm the safety distance remains adequate.",
+      "action_description_zh": "测量并记录停止时间，随后确认当前安全距离仍然足够。",
+      "priority": "high",
+      "owner_role_id": "role-maintenance",
+      "due_on": "2026-09-30",
+      "status": "open"
+    },
+    {
+      "equipment_id": "weld-01",
+      "safety_control_id": "control-weld-vent",
+      "result": "conditional",
+      "finding_en": "Capture was visible, but measured airflow was below the internal target at one hood position.",
+      "finding_zh": "可观察到烟尘被捕集，但一个罩口位置的实测风量低于厂内目标值。",
+      "action_code": "CA-2026-002",
+      "action_title_en": "Restore welding extraction airflow",
+      "action_title_zh": "恢复焊接局部排风风量",
+      "action_description_en": "Clean the duct and hood, rebalance airflow and retain the measurement report.",
+      "action_description_zh": "清洁风管和罩口，重新平衡风量，并保留测量报告。",
+      "priority": "high",
+      "owner_role_id": "role-maintenance",
+      "due_on": "2026-09-20",
+      "status": "in_progress"
+    },
+    {
+      "equipment_id": "forklift-03",
+      "safety_control_id": "control-pedestrian",
+      "result": "conditional",
+      "finding_en": "A pedestrian route marking at the dock approach is worn and has reduced visibility.",
+      "finding_zh": "装卸区入口的一段人行路线标线磨损，辨识度下降。",
+      "action_code": "CA-2026-003",
+      "action_title_en": "Restore dock pedestrian route marking",
+      "action_title_zh": "修复装卸区人行路线标线",
+      "action_description_en": "Repaint the route and verify that the vehicle-pedestrian separation remains clear under normal lighting.",
+      "action_description_zh": "重新喷涂路线，并确认正常照明条件下人车分流边界清晰。",
+      "priority": "medium",
+      "owner_role_id": "role-dock",
+      "due_on": "2026-10-10",
+      "status": "open"
+    },
+    {
+      "equipment_id": "paint-mix-01",
+      "safety_control_id": "control-weld-vent",
+      "result": "conditional",
+      "finding_en": "Airflow passed, but the inspection record did not include the hood position used during the test.",
+      "finding_zh": "风量测试通过，但检查记录未注明测试时使用的罩口位置。",
+      "action_code": "CA-2026-004",
+      "action_title_en": "Improve paint-mixing ventilation test record",
+      "action_title_zh": "完善油漆混配排风测试记录",
+      "action_description_en": "Revise the checklist to record hood position and repeatability conditions for each airflow measurement.",
+      "action_description_zh": "修改检查表，在每次风量测量时记录罩口位置和重复性条件。",
+      "priority": "medium",
+      "owner_role_id": "role-chemical",
+      "due_on": "2026-10-15",
+      "status": "open"
+    }
+  ]
+}

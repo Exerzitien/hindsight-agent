@@ -1,0 +1,14 @@
+[console_scripts]
+hindsight-collect = hindsight_agent.collector_cli:main
+hindsight-collector-agent = hindsight_agent.collector_agent:main
+hindsight-daily = hindsight_agent.daily_pipeline:main
+hindsight-daily-agent = hindsight_agent.rag_agent:main
+hindsight-dashboard = hindsight_agent.dashboard:main
+hindsight-factory-create = hindsight_agent.factory_db:main
+hindsight-factory-create-zh = hindsight_agent.factory_db:zh_main
+hindsight-factory-show = hindsight_agent.factory_db:show_main
+hindsight-incidents-import = hindsight_agent.incident_db:main
+hindsight-incidents-show = hindsight_agent.incident_db:show_main
+hindsight-news-agent = hindsight_agent.news_agent:main
+hindsight-news-collect = hindsight_agent.news_cli:main
+hindsight-rag-bootstrap = hindsight_agent.daily_pipeline:bootstrap_main

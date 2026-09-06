@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hindsight-agent"
+version = "0.2.0"
+description = "Auditable Strands agent for OSHA monitoring and factory-risk RAG"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "beautifulsoup4>=4.12",
+    "Pillow>=10",
+    "pymilvus>=2.6.17,<2.7",
+    "pypdf>=5.0",
+    "python-dotenv>=1.0",
+    "requests>=2.32",
+    "strands-agents[ollama,otel]>=1.0",
+    "streamlit>=1.40",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+observability = ["opentelemetry-exporter-otlp-proto-http>=1.27"]
+
+[project.scripts]
+hindsight-collect = "hindsight_agent.collector_cli:main"
+hindsight-collector-agent = "hindsight_agent.collector_agent:main"
+hindsight-news-collect = "hindsight_agent.news_cli:main"
+hindsight-news-agent = "hindsight_agent.news_agent:main"
+hindsight-factory-create = "hindsight_agent.factory_db:main"
+hindsight-factory-show = "hindsight_agent.factory_db:show_main"
+hindsight-factory-create-zh = "hindsight_agent.factory_db:zh_main"
+hindsight-incidents-import = "hindsight_agent.incident_db:main"
+hindsight-incidents-show = "hindsight_agent.incident_db:show_main"
+hindsight-rag-bootstrap = "hindsight_agent.daily_pipeline:bootstrap_main"
+hindsight-daily = "hindsight_agent.daily_pipeline:main"
+hindsight-daily-agent = "hindsight_agent.rag_agent:main"
+hindsight-dashboard = "hindsight_agent.dashboard:main"
+hindsight-grounding-collect = "hindsight_agent.tools.collect_grounding:main"
+hindsight-draft = "hindsight_agent.content:main"
+hindsight-screen = "hindsight_agent.transfer:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hindsight_agent = ["seed/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
