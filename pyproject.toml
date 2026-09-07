@@ -40,6 +40,7 @@ hindsight-dashboard = "hindsight_agent.dashboard:main"
 hindsight-grounding-collect = "hindsight_agent.tools.collect_grounding:main"
 hindsight-draft = "hindsight_agent.content:main"
 hindsight-screen = "hindsight_agent.transfer:main"
+hindsight-workflow = "hindsight_agent.workflow:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

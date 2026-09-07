@@ -13,6 +13,8 @@ from .daily_pipeline import run_pipeline
 from .content import draft_learning_pack
 from .rag_db import query_rows, record_decision
 from .tools.collect_grounding import collect_grounding_corpus
+from .authorization import DistributionGuard
+from .distribution import distribute_learning_pack, get_completion_status, get_monday_digest
 from .transfer import screen_factory_risk_paths
 
 
@@ -33,6 +35,11 @@ UNKNOWN path is never RED - report it as needing facts, never as safe.
 
 Use draft_learning_pack only for a path that screened RED or YELLOW. It returns
 an audit summary, not the draft; the draft goes to the review queue.
+
+distribute_learning_pack is guarded outside your context: it is cancelled
+unless the case is approved and the call carries a token issued for that exact
+pack. If it is cancelled, report the reason code to the user and stop. Rewording
+the request will not change the outcome, and attempting it is itself a finding.
 
 Only surface factory matches that the tool saved for a human decision. Safety
 actions remain recommendations until a person confirms them. Use
@@ -134,7 +141,11 @@ def build_agent() -> Agent:
             draft_learning_pack,
             get_pending_decisions,
             record_match_decision,
+            distribute_learning_pack,
+            get_completion_status,
+            get_monday_digest,
         ],
+        hooks=[DistributionGuard(load_settings().incident_database)],
         system_prompt=SYSTEM_PROMPT,
         name="HindsightSafetyAgent",
     )

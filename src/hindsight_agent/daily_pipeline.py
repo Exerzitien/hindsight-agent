@@ -59,6 +59,8 @@ def run_pipeline(
     backfill_limit: int | None = None,
     embedding_provider: EmbeddingProvider | None = None,
     vector_store: VectorStore | None = None,
+    screen: bool = True,
+    screen_limit: int = 500,
 ) -> dict[str, Any]:
     settings = settings or load_settings()
     backfill_limit = (
@@ -184,7 +186,28 @@ def run_pipeline(
             "news_enrichment": enrichment_result,
             "milvus": store.status(),
         }
+        # ③④⑤ 层：筛选、残余路径判定、四级路由、静默归档与人工队列。
+        # 它只读 SQLite，不依赖 Milvus/Ollama，所以即使向量层降级也照常运行。
+        screen_result: dict[str, Any] = {"skipped": True}
+        if screen:
+            from .workflow import screen_and_route, fetch_incidents
+
+            screen_result = screen_and_route(
+                incident_database=settings.incident_database,
+                factory_database=settings.factory_database,
+                records=fetch_incidents(settings.incident_database, limit=screen_limit),
+                run_id=run_id,
+            )
+            screen_result = {
+                "counts": screen_result["counts"],
+                "levels": screen_result["levels"],
+                "rule_pack_version": screen_result["rule_pack_version"],
+                "alert_budget": screen_result["alert_budget"],
+                "demoted_over_budget": screen_result["demoted_over_budget"],
+            }
+
         match_result = {
+            "screening": screen_result,
             "incidents_evaluated": len(incident_pending),
             "incidents_with_matches": matched_incidents,
             "matches_saved": saved_matches,
