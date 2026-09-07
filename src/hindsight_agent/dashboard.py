@@ -23,13 +23,20 @@ from __future__ import annotations
 
 import json
 import sys
+from contextlib import contextmanager
 from datetime import date, datetime
 from typing import Any
 
 from hindsight_agent.config import load_settings
 from hindsight_agent.daily_pipeline import run_pipeline
 from hindsight_agent.distribution import completion_status, monday_digest
-from hindsight_agent.rag_db import dashboard_summary, query_rows, record_decision
+from hindsight_agent.incident_db import ensure_incident_schema
+from hindsight_agent.rag_db import (
+    dashboard_summary,
+    ensure_rag_schema,
+    query_rows,
+    record_decision,
+)
 from hindsight_agent.transfer import (
     ACTIONABLE,
     LEVEL_RED,
@@ -104,6 +111,48 @@ def _decode_json(value: str | None) -> dict:
 # --------------------------------------------------------------------------
 # 数据读取
 # --------------------------------------------------------------------------
+
+@contextmanager
+def section_guard(st, label: str):
+    """一块区域读不出来时，只让这一块显示失败，而不是让整页空白。
+
+    控制台会同时读事故库、检索库、工作流库和风险登记册。任何一处形状不对
+    （旧版本、手工改过、还没导数据），都不该把另外三处也一起带走——尤其不该
+    在演示时把整页变成一段 traceback。
+    """
+    try:
+        yield
+    except Exception as error:
+        st.error(f"「{label}」读取失败：{error}")
+        st.caption("其余部分不受影响。若这是旧版本数据库，先按页面顶部的提示重建。")
+
+
+def bootstrap_schemas(incident_database) -> list[str]:
+    """把三套 schema 都建齐，并把建不起来的原因交回去显示，而不是抛出去。
+
+    事故库上叠着三套 schema：事故、RAG、工作流。控制台完全可能是这个库上跑的
+    第一个东西——有人 clone 完先打开界面，再想起来要导数据。
+
+    这里吞掉异常是刻意的，而且只在这里成立：控制台是个只读视图，
+    「建不出表」不应该让它连已有的东西都显示不了。但吞掉不等于藏起来——
+    每一条失败都会作为醒目的提示显示在页面顶部，告诉人该去跑哪条命令。
+    一个以 traceback 开场的界面，等于告诉评委这东西没人跑过。
+    """
+    problems: list[str] = []
+    for label, ensure, command in (
+        ("事故库", ensure_incident_schema, "hindsight-incidents-import"),
+        ("检索库", ensure_rag_schema, "hindsight-rag-bootstrap"),
+        ("工作流库", ensure_workflow_schema, "hindsight-demo --reset"),
+    ):
+        try:
+            ensure(incident_database)
+        except Exception as error:
+            problems.append(
+                f"{label} schema 建不起来：{error}。"
+                f"这通常意味着数据库是旧版本或被手工改过——先跑 `{command}`。"
+            )
+    return problems
+
 
 def funnel_counts(incident_database) -> dict[str, int]:
     """本周扫描了多少、静默归档了多少、真正需要一个人看多少。
@@ -309,7 +358,7 @@ def render_dashboard() -> None:
     import streamlit as st
 
     settings = load_settings()
-    ensure_workflow_schema(settings.incident_database)
+    bootstrap_problems = bootstrap_schemas(settings.incident_database)
 
     st.set_page_config(
         page_title="Hindsight Safety Console",
@@ -381,8 +430,15 @@ def render_dashboard() -> None:
         st.caption(f"Factory · {settings.factory_database.name}")
         st.caption(f"Milvus · {settings.milvus_uri}")
 
-    counts = funnel_counts(settings.incident_database)
-    summary = dashboard_summary(settings.incident_database)
+    for problem in bootstrap_problems:
+        st.warning(problem)
+
+    counts = {k: 0 for k in ("considered", "archived", "quarantined", "queued",
+                             "red", "yellow", "distributed", "closed", "rejected")}
+    summary = {"counts": {"incidents": 0}, "latest_run": None}
+    with section_guard(st, "顶部指标"):
+        counts = funnel_counts(settings.incident_database)
+        summary = dashboard_summary(settings.incident_database)
     latest = summary["latest_run"]
 
     title_col, state_col = st.columns([4, 1])
@@ -424,211 +480,217 @@ def render_dashboard() -> None:
 
     # ----------------------------------------------------------------------
     with queue_tab:
-        rows = queue_rows(settings.incident_database)
-        if not rows:
-            st.info(
-                "队列是空的。这通常不是系统没在工作——"
-                "看顶部漏斗：被确定性归档的每一条都留下了理由，可在「审计轨迹」中逐条追溯。"
-            )
-        else:
-            red = [r for r in rows if r["level"] == LEVEL_RED]
-            yellow = [r for r in rows if r["level"] == LEVEL_YELLOW]
-            red_col, yellow_col = st.columns(2)
-            for column, bucket, level in (
-                (red_col, red, LEVEL_RED), (yellow_col, yellow, LEVEL_YELLOW)
-            ):
-                colour, label, meaning = _LEVEL_STYLE[level]
-                with column:
-                    st.markdown(
-                        f"<h4 style='color:{colour}'>{label} · {len(bucket)} 条</h4>"
-                        f"<p style='color:#536168;margin-top:-8px'>{meaning}</p>",
-                        unsafe_allow_html=True,
-                    )
-                    for row in bucket:
+        with section_guard(st, "待你决定"):
+            rows = queue_rows(settings.incident_database)
+            if not rows:
+                st.info(
+                    "队列是空的。这通常不是系统没在工作——"
+                    "看顶部漏斗：被确定性归档的每一条都留下了理由，可在「审计轨迹」中逐条追溯。"
+                )
+            else:
+                red = [r for r in rows if r["level"] == LEVEL_RED]
+                yellow = [r for r in rows if r["level"] == LEVEL_YELLOW]
+                red_col, yellow_col = st.columns(2)
+                for column, bucket, level in (
+                    (red_col, red, LEVEL_RED), (yellow_col, yellow, LEVEL_YELLOW)
+                ):
+                    colour, label, meaning = _LEVEL_STYLE[level]
+                    with column:
                         st.markdown(
-                            f"`{row['case_id'][:12]}` · "
-                            f"{_STATE_LABEL.get(row['state'], row['state'])} · "
-                            f"{row['event_title'] or row['incident_key']}"
+                            f"<h4 style='color:{colour}'>{label} · {len(bucket)} 条</h4>"
+                            f"<p style='color:#536168;margin-top:-8px'>{meaning}</p>",
+                            unsafe_allow_html=True,
                         )
+                        for row in bucket:
+                            st.markdown(
+                                f"`{row['case_id'][:12]}` · "
+                                f"{_STATE_LABEL.get(row['state'], row['state'])} · "
+                                f"{row['event_title'] or row['incident_key']}"
+                            )
 
-            st.divider()
-            selected_id = st.selectbox(
-                "打开一条案例",
-                [row["case_id"] for row in rows],
-                format_func=lambda value: next(
-                    f"{row['level']} · {_STATE_LABEL.get(row['state'], row['state'])} · "
-                    f"{row['event_title'] or row['incident_key']}"
-                    for row in rows if row["case_id"] == value
-                ),
-            )
-            case = next(row for row in rows if row["case_id"] == selected_id)
-            _render_case(st, settings, case, as_of=as_of.isoformat())
+                st.divider()
+                selected_id = st.selectbox(
+                    "打开一条案例",
+                    [row["case_id"] for row in rows],
+                    format_func=lambda value: next(
+                        f"{row['level']} · {_STATE_LABEL.get(row['state'], row['state'])} · "
+                        f"{row['event_title'] or row['incident_key']}"
+                        for row in rows if row["case_id"] == value
+                    ),
+                )
+                case = next(row for row in rows if row["case_id"] == selected_id)
+                _render_case(st, settings, case, as_of=as_of.isoformat())
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     with register_tab:
-        st.caption(
-            "对本厂每一条危险路径做一次残余路径验证。绿色是被阻断并有验证记录支持的路径，"
-            "这些路径永远不会打扰任何人——但它们的证书随时可查。"
-        )
-        try:
-            certificates = assess_paths(settings.factory_database, as_of=as_of.isoformat())
-        except Exception as exc:
-            st.error(f"读取风险登记册失败：{exc}")
-            certificates = []
-        if certificates:
-            decisions = [(c, route_path(c)) for c in certificates]
-            tally = {}
-            for _, routing in decisions:
-                tally[routing.level] = tally.get(routing.level, 0) + 1
-            cols = st.columns(4)
-            for index, level in enumerate(("RED", "YELLOW", "GREEN", "NOT_RELEVANT")):
-                cols[index].metric(level, tally.get(level, 0))
+        with section_guard(st, "风险登记册判定"):
+            st.caption(
+                "对本厂每一条危险路径做一次残余路径验证。绿色是被阻断并有验证记录支持的路径，"
+                "这些路径永远不会打扰任何人——但它们的证书随时可查。"
+            )
+            try:
+                certificates = assess_paths(settings.factory_database, as_of=as_of.isoformat())
+            except Exception as exc:
+                st.error(f"读取风险登记册失败：{exc}")
+                certificates = []
+            if certificates:
+                decisions = [(c, route_path(c)) for c in certificates]
+                tally = {}
+                for _, routing in decisions:
+                    tally[routing.level] = tally.get(routing.level, 0) + 1
+                cols = st.columns(4)
+                for index, level in enumerate(("RED", "YELLOW", "GREEN", "NOT_RELEVANT")):
+                    cols[index].metric(level, tally.get(level, 0))
 
-            st.dataframe(
-                [
-                    {
-                        "级别": routing.level,
-                        "路径": certificate.assessment_code,
-                        "设备": certificate.equipment_name,
-                        "危险": certificate.hazard_name,
-                        "判定": certificate.decision,
-                        "理由码": certificate.reason_code,
-                        "初始严重度": certificate.initial_severity,
-                    }
-                    for certificate, routing in decisions
-                ],
-                width="stretch", hide_index=True, height=320,
-            )
-            chosen = st.selectbox(
-                "查看某条路径的判定依据",
-                [c.risk_assessment_id for c, _ in decisions],
-                format_func=lambda value: next(
-                    f"{r.level} · {c.assessment_code} · {c.equipment_name}"
-                    for c, r in decisions if c.risk_assessment_id == value
-                ),
-            )
-            certificate = next(
-                c for c, _ in decisions if c.risk_assessment_id == chosen
-            )
-            render_certificate(st, certificate)
+                st.dataframe(
+                    [
+                        {
+                            "级别": routing.level,
+                            "路径": certificate.assessment_code,
+                            "设备": certificate.equipment_name,
+                            "危险": certificate.hazard_name,
+                            "判定": certificate.decision,
+                            "理由码": certificate.reason_code,
+                            "初始严重度": certificate.initial_severity,
+                        }
+                        for certificate, routing in decisions
+                    ],
+                    width="stretch", hide_index=True, height=320,
+                )
+                chosen = st.selectbox(
+                    "查看某条路径的判定依据",
+                    [c.risk_assessment_id for c, _ in decisions],
+                    format_func=lambda value: next(
+                        f"{r.level} · {c.assessment_code} · {c.equipment_name}"
+                        for c, r in decisions if c.risk_assessment_id == value
+                    ),
+                )
+                certificate = next(
+                    c for c, _ in decisions if c.risk_assessment_id == chosen
+                )
+                render_certificate(st, certificate)
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     with delivery_tab:
-        digest = monday_digest(settings.incident_database)
-        st.subheader("周一摘要")
-        st.info(digest["headline"])
-        cols = st.columns(4)
-        cols[0].metric("分发次数", digest["deliveries"])
-        cols[1].metric("触达人数", digest["workers_reached"])
-        cols[2].metric(
-            "完成率",
-            "—" if digest["completion_rate"] is None
-            else f"{digest['completion_rate'] * 100:.0f}%",
-        )
-        cols[3].metric(
-            "平均成绩",
-            "—" if digest["average_quiz_score"] is None
-            else f"{digest['average_quiz_score']:.2f}",
-        )
-        deliveries = query_rows(
-            settings.incident_database,
-            'SELECT * FROM "分发与完成" ORDER BY "送达时间" DESC LIMIT 200',
-        )
-        if deliveries:
-            st.dataframe(deliveries, width="stretch", hide_index=True, height=360)
-        else:
-            st.caption("还没有任何分发记录。")
-        if digest["archive_reasons"]:
-            st.subheader("本周静默归档的原因分布")
-            st.dataframe(
-                [{"理由码": k, "条数": v} for k, v in digest["archive_reasons"].items()],
-                width="stretch", hide_index=True,
+        with section_guard(st, "分发与完成"):
+            digest = monday_digest(settings.incident_database)
+            st.subheader("周一摘要")
+            st.info(digest["headline"])
+            cols = st.columns(4)
+            cols[0].metric("分发次数", digest["deliveries"])
+            cols[1].metric("触达人数", digest["workers_reached"])
+            cols[2].metric(
+                "完成率",
+                "—" if digest["completion_rate"] is None
+                else f"{digest['completion_rate'] * 100:.0f}%",
             )
+            cols[3].metric(
+                "平均成绩",
+                "—" if digest["average_quiz_score"] is None
+                else f"{digest['average_quiz_score']:.2f}",
+            )
+            deliveries = query_rows(
+                settings.incident_database,
+                'SELECT * FROM "分发与完成" ORDER BY "送达时间" DESC LIMIT 200',
+            )
+            if deliveries:
+                st.dataframe(deliveries, width="stretch", hide_index=True, height=360)
+            else:
+                st.caption("还没有任何分发记录。")
+            if digest["archive_reasons"]:
+                st.subheader("本周静默归档的原因分布")
+                st.dataframe(
+                    [{"理由码": k, "条数": v} for k, v in digest["archive_reasons"].items()],
+                    width="stretch", hide_index=True,
+                )
 
-    # ----------------------------------------------------------------------
+        # ----------------------------------------------------------------------
     with audit_tab:
-        st.caption("每一次状态变化都带着执行者、理由码与时间，且顺序不可重排。")
-        cases = query_rows(
-            settings.incident_database,
-            'SELECT * FROM "案例状态" ORDER BY "更新时间" DESC LIMIT 300',
-        )
-        if not cases:
-            st.info("还没有案例。先运行一次工作流。")
-        else:
-            st.dataframe(cases, width="stretch", hide_index=True, height=300)
-            case_id = st.selectbox(
-                "查看某条案例的完整轨迹", [row["案例ID"] for row in cases]
+        with section_guard(st, "审计轨迹"):
+            st.caption("每一次状态变化都带着执行者、理由码与时间，且顺序不可重排。")
+            cases = query_rows(
+                settings.incident_database,
+                'SELECT * FROM "案例状态" ORDER BY "更新时间" DESC LIMIT 300',
             )
-            history = case_history(settings.incident_database, case_id)
+            if not cases:
+                st.info("还没有案例。先运行一次工作流。")
+            else:
+                st.dataframe(cases, width="stretch", hide_index=True, height=300)
+                case_id = st.selectbox(
+                    "查看某条案例的完整轨迹", [row["案例ID"] for row in cases]
+                )
+                history = case_history(settings.incident_database, case_id)
+                st.dataframe(
+                    [
+                        {
+                            "序": row["seq"], "从": row["from_state"] or "—",
+                            "到": row["to_state"], "执行者": row["actor"],
+                            "理由码": row["reason_code"], "时间": row["occurred_at"],
+                            "细节": (row["detail"] or "")[:160],
+                        }
+                        for row in history
+                    ],
+                    width="stretch", hide_index=True,
+                )
+
+        # ----------------------------------------------------------------------
+    with retrieval_tab:
+        with section_guard(st, "候选检索"):
+            st.warning(
+                "这一页是候选检索，不是判定。相关度分数用来把可能相关的事故拉到评估范围内，"
+                "它不决定任何事——决定由「风险登记册判定」页的残余路径验证作出。"
+                "把这个分数当成结论，正是本项目要避免的失败方式。"
+            )
+            matches = query_rows(
+                settings.incident_database,
+                """
+                SELECT incident_title AS 事故, incident_date AS 日期,
+                       area_name AS 区域, asset_code AS 设备编号,
+                       equipment_name AS 设备, hazard_name AS 危险,
+                       ROUND(relevance_score * 100, 1) AS 检索相关度,
+                       CASE decision_status WHEN 'pending' THEN '待决定'
+                            WHEN 'confirmed' THEN '已确认' ELSE '已忽略' END AS 状态,
+                       updated_at AS 更新时间
+                FROM incident_factory_matches
+                ORDER BY updated_at DESC, relevance_score DESC
+                LIMIT 500
+                """,
+            )
+            if matches:
+                st.dataframe(matches, width="stretch", hide_index=True, height=460)
+            else:
+                st.caption("还没有候选检索结果。")
+
+        # ----------------------------------------------------------------------
+    with data_tab:
+        with section_guard(st, "数据状态"):
+            st.subheader("存储位置")
+            st.code(
+                f"SQLite: {settings.incident_database}\n"
+                f"Factory: {settings.factory_database}\n"
+                f"Milvus: {settings.milvus_uri}\n"
+                f"Incident collection: {settings.incident_collection}\n"
+                f"Factory collection: {settings.factory_collection}"
+            )
+            st.subheader("可用视图")
             st.dataframe(
                 [
-                    {
-                        "序": row["seq"], "从": row["from_state"] or "—",
-                        "到": row["to_state"], "执行者": row["actor"],
-                        "理由码": row["reason_code"], "时间": row["occurred_at"],
-                        "细节": (row["detail"] or "")[:160],
-                    }
-                    for row in history
+                    {"视图": "案例状态", "用途": "每条案例现在在工作流的哪一步"},
+                    {"视图": "分发与完成", "用途": "发给了谁、多少人读完、成绩如何"},
+                    {"视图": "事故工厂匹配", "用途": "候选检索结果（不是判定）"},
+                    {"视图": "每日运行", "用途": "定时任务与失败原因"},
+                    {"视图": "事故记录", "用途": "OSHA SIR 事故底库"},
+                    {"视图": "接地语料", "用途": "CFR 与 Fatal Facts 语料段落"},
                 ],
                 width="stretch", hide_index=True,
             )
-
-    # ----------------------------------------------------------------------
-    with retrieval_tab:
-        st.warning(
-            "这一页是候选检索，不是判定。相关度分数用来把可能相关的事故拉到评估范围内，"
-            "它不决定任何事——决定由「风险登记册判定」页的残余路径验证作出。"
-            "把这个分数当成结论，正是本项目要避免的失败方式。"
-        )
-        matches = query_rows(
-            settings.incident_database,
-            """
-            SELECT incident_title AS 事故, incident_date AS 日期,
-                   area_name AS 区域, asset_code AS 设备编号,
-                   equipment_name AS 设备, hazard_name AS 危险,
-                   ROUND(relevance_score * 100, 1) AS 检索相关度,
-                   CASE decision_status WHEN 'pending' THEN '待决定'
-                        WHEN 'confirmed' THEN '已确认' ELSE '已忽略' END AS 状态,
-                   updated_at AS 更新时间
-            FROM incident_factory_matches
-            ORDER BY updated_at DESC, relevance_score DESC
-            LIMIT 500
-            """,
-        )
-        if matches:
-            st.dataframe(matches, width="stretch", hide_index=True, height=460)
-        else:
-            st.caption("还没有候选检索结果。")
-
-    # ----------------------------------------------------------------------
-    with data_tab:
-        st.subheader("存储位置")
-        st.code(
-            f"SQLite: {settings.incident_database}\n"
-            f"Factory: {settings.factory_database}\n"
-            f"Milvus: {settings.milvus_uri}\n"
-            f"Incident collection: {settings.incident_collection}\n"
-            f"Factory collection: {settings.factory_collection}"
-        )
-        st.subheader("可用视图")
-        st.dataframe(
-            [
-                {"视图": "案例状态", "用途": "每条案例现在在工作流的哪一步"},
-                {"视图": "分发与完成", "用途": "发给了谁、多少人读完、成绩如何"},
-                {"视图": "事故工厂匹配", "用途": "候选检索结果（不是判定）"},
-                {"视图": "每日运行", "用途": "定时任务与失败原因"},
-                {"视图": "事故记录", "用途": "OSHA SIR 事故底库"},
-                {"视图": "接地语料", "用途": "CFR 与 Fatal Facts 语料段落"},
-            ],
-            width="stretch", hide_index=True,
-        )
-        st.subheader("这个系统明确不做的事")
-        st.markdown(
-            "- 不预测事故是否会发生，也不输出任何形式的事故概率。\n"
-            "- 不在证据不足时给出建议：未知会被显式标注为未知。\n"
-            "- 不代替人批准任何发往一线的内容。\n"
-            "- 不覆盖联邦 OSHA 管辖之外的雇主，数据边界见 README。"
-        )
+            st.subheader("这个系统明确不做的事")
+            st.markdown(
+                "- 不预测事故是否会发生，也不输出任何形式的事故概率。\n"
+                "- 不在证据不足时给出建议：未知会被显式标注为未知。\n"
+                "- 不代替人批准任何发往一线的内容。\n"
+                "- 不覆盖联邦 OSHA 管辖之外的雇主，数据边界见 README。"
+            )
 
 
 def _render_case(st, settings, case: dict[str, Any], *, as_of: str) -> None:

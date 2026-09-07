@@ -173,6 +173,17 @@ def _connect(database_path: Path) -> sqlite3.Connection:
     return connection
 
 
+def ensure_incident_schema(database_path: Path) -> None:
+    """建好事故库 schema，幂等。
+
+    这层此前没有公开入口，只有 ``_connect`` 顺带建。于是「先打开控制台、
+    还没导数据」的路径会撞上一个裸的 SQLite 报错——因为事故库上叠着三套
+    schema（事故、RAG、工作流），而只有后两套能被单独建起来。
+    """
+    connection = _connect(database_path)
+    connection.close()
+
+
 def _read_manifest(path: Path) -> dict[str, Any]:
     try:
         manifest = json.loads(path.read_text(encoding="utf-8"))

@@ -14,9 +14,13 @@ dependencies = [
     "pymilvus>=2.6.17,<2.7",
     "pypdf>=5.0",
     "python-dotenv>=1.0",
+    "openai>=1.0",
     "requests>=2.32",
     "strands-agents[ollama,otel]>=1.0",
-    "streamlit>=1.40",
+    # 控制台用 width="stretch"（新版 API，取代 use_container_width）。
+    # 下限钉在实测通过的版本，而不是猜一个更低的：装到不支持该参数的
+    # 版本上，界面会在第一次打开时直接报错。
+    "streamlit>=1.63",
 ]
 
 [project.optional-dependencies]

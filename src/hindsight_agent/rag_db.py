@@ -16,6 +16,16 @@ from .rag_documents import RagDocument
 RAG_SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
 
+-- 这张表原本只由 incident_db 建，而 connect() 每次都会往里写一行版本号。
+-- 也就是说 rag_db 隐含依赖「事故库 schema 已经建过」——平时成立，因为流水线
+-- 总是先导事故；但只要有人先打开控制台再导数据，就会撞上一个裸的
+-- "no such table: database_metadata"。两边都用 IF NOT EXISTS 声明它，
+-- 依赖关系就不再靠调用顺序维持。
+CREATE TABLE IF NOT EXISTS database_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS osha_news_documents (
     entry_id TEXT PRIMARY KEY REFERENCES osha_news_releases(entry_id) ON DELETE CASCADE,
     source_url TEXT NOT NULL,
