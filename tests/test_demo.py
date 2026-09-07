@@ -155,3 +155,51 @@ def test_reset_on_a_fresh_database_is_not_an_error(tmp_path):
     fresh = tmp_path / "fresh.db"
     assert demo.reset_workflow(fresh) == {}
     assert fresh.exists()
+
+
+# --------------------------------------------------------------------------
+# 换模型之后第一个该看的数字
+# --------------------------------------------------------------------------
+
+def test_drafting_quality_reports_how_much_survived_self_check(
+    incidents, factory, corpus
+):
+    """弱模型的典型表现不是「写错了」，而是「写完之后基本被删光」。"""
+    from tests.test_pack_artifacts import _drafted
+
+    _drafted(incidents, factory, corpus)
+    quality = demo.drafting_quality(incidents)
+    assert quality["packs"] == 1
+    assert quality["checked_claims"] > 0
+    assert quality["survival_rate"] is not None
+    assert 0.0 <= quality["survival_rate"] <= 1.0
+
+
+def test_drafting_quality_counts_what_was_deleted_and_why(incidents, factory, corpus):
+    """引用编造出来的主张必须被删掉，并在原因里留下痕迹。"""
+    from hindsight_agent.content import DraftClaimModel
+    from hindsight_agent.workflow import draft_for_routed
+    from tests.test_pack_artifacts import _classified_case, _routed
+
+    model = _good()
+    model.briefing_claims.append(
+        DraftClaimModel(claim_id="fake", claim_type="REQUIREMENT",
+                        text_en="Guards must be inspected every 90 minutes.",
+                        text_es="Los resguardos deben inspeccionarse cada 90 minutos.",
+                        citations=["corpus:this-passage-does-not-exist"])
+    )
+    case_id = _classified_case(incidents, "inc-1")
+    draft_for_routed(
+        incident_database=incidents, factory_database=factory,
+        corpus_database=corpus, routed=_routed(case_id),
+        generator=ScriptedGenerator(model),
+    )
+
+    quality = demo.drafting_quality(incidents)
+    assert quality["removed_claims"] >= 1
+    assert quality["survival_rate"] < 1.0
+    assert quality["top_reasons"], "删除必须留下原因码"
+
+
+def test_drafting_quality_on_a_database_with_no_packs_is_not_an_error(tmp_path):
+    assert demo.drafting_quality(tmp_path / "nothing.db")["packs"] == 0

@@ -129,6 +129,43 @@ def check_data(settings) -> dict[str, Any]:
             "corpus_path": str(corpus)}
 
 
+def drafting_quality(database_path: Path | str) -> dict[str, Any]:
+    """起草出来的东西有多少经得起 G4 核查。
+
+    这是换模型之后第一个该看的数字。自检把没有出处的主张整句删掉，所以一个
+    弱模型的典型表现不是"写错了"，而是"写完之后基本被删光"。
+    「检查 12 条、删掉 9 条」这一行，比任何主观评价都更快地告诉你这个模型
+    够不够用。
+    """
+    connection = sqlite3.connect(str(database_path))
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute(
+            "SELECT self_check_json FROM pack_artifacts"
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return {"packs": 0}
+    finally:
+        connection.close()
+
+    checked = removed = removed_quiz = 0
+    reasons: dict[str, int] = {}
+    for row in rows:
+        report = json.loads(row["self_check_json"] or "{}")
+        checked += int(report.get("checked_claims") or 0)
+        removed += len(report.get("removed_claim_ids") or [])
+        removed_quiz += len(report.get("removed_quiz_ids") or [])
+        for finding in report.get("findings") or []:
+            code = finding.get("check", "?")
+            reasons[code] = reasons.get(code, 0) + 1
+    return {
+        "packs": len(rows), "checked_claims": checked,
+        "removed_claims": removed, "removed_quiz": removed_quiz,
+        "survival_rate": round((checked - removed) / checked, 3) if checked else None,
+        "top_reasons": dict(sorted(reasons.items(), key=lambda kv: -kv[1])[:5]),
+    }
+
+
 def reset_workflow(database_path: Path | str) -> dict[str, int]:
     """只清工作流状态。事故与语料是资产，不是演示残留。"""
     from .workflow_db import ensure_workflow_schema
@@ -226,6 +263,21 @@ def run_demo(
     if result["drafts"]["needs_human_writer"]:
         _say("需人工补写", f"{result['drafts']['needs_human_writer']} 条"
                           "（自检删完无出处主张后填不满必需段落）")
+
+    if generator is not None:
+        quality = drafting_quality(settings.incident_database)
+        if quality.get("checked_claims"):
+            rate = quality["survival_rate"]
+            _say("G4 自检",
+                 f"检查 {quality['checked_claims']} 条主张，"
+                 f"删除 {quality['removed_claims']} 条，"
+                 f"存活率 {rate:.0%}" if rate is not None else "")
+            if quality["top_reasons"]:
+                _say("删除原因",
+                     "、".join(f"{k} {v}" for k, v in quality["top_reasons"].items()))
+            if rate is not None and rate < 0.5:
+                _say("提示", "存活率偏低通常意味着模型在编造引用。"
+                             "换一个更强的模型，或检查语料是否覆盖了这条危险路径。")
     print(f"\n  {result['digest']['headline']}")
     print("\n下一步：hindsight-dashboard   打开控制台，在「待你决定」里审批")
     return result
