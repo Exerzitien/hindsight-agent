@@ -47,6 +47,16 @@ from tests.test_content_orchestration import (  # noqa: F401  (fixture reuse)
 from tests.test_workflow import GOOD_NARRATIVE
 
 
+#: 测试工厂夹具里 risk-1 的暴露岗位是 role-op，渠道注册表必须与之对应，
+#: 否则定向分发会正确地定到一个没有渠道的岗位（那条路径由专门的测试覆盖）。
+SITE_CHANNELS = (
+    {"channel_id": "ch-press-en", "name": "冲压 A 班", "kind": "mock_inbox",
+     "shift": "A", "role_id": "role-op", "language": "en", "member_count": 6},
+    {"channel_id": "ch-press-es", "name": "冲压 A 班（西语）", "kind": "mock_inbox",
+     "shift": "A", "role_id": "role-op", "language": "es", "member_count": 4},
+)
+
+
 def _classified_case(incidents_db: Path, incident_key: str = "inc-1") -> str:
     """Walk one case to CLASSIFIED, the state drafting starts from."""
     ensure_workflow_schema(incidents_db)
@@ -184,11 +194,12 @@ def test_approval_is_refused_when_no_body_can_be_produced(incidents, factory, co
 def test_what_is_delivered_is_what_was_approved(incidents, factory, corpus):
     case_id, content_hash = _drafted(incidents, factory, corpus)
     rule_pack.initialize(incidents)
-    register_channels(incidents)
+    register_channels(incidents, SITE_CHANNELS)
 
     result = approve_and_distribute(
         incident_database=incidents, case_id=case_id,
         pack_content_hash=content_hash, approver="ehs-lead",
+        factory_database=factory,
     )
     delivered = [d for d in result["deliveries"] if d.get("delivered")]
     assert delivered, result
@@ -212,10 +223,11 @@ def test_the_delivered_body_is_not_empty_and_hashes_back(incidents, factory, cor
 
     case_id, content_hash = _drafted(incidents, factory, corpus)
     rule_pack.initialize(incidents)
-    register_channels(incidents)
+    register_channels(incidents, SITE_CHANNELS)
     approve_and_distribute(
         incident_database=incidents, case_id=case_id,
         pack_content_hash=content_hash, approver="ehs-lead",
+        factory_database=factory,
     )
 
     lines = [json.loads(line) for line in inbox.read_text(encoding="utf-8").splitlines()]
@@ -240,3 +252,64 @@ def test_both_languages_ship_under_one_approved_hash(incidents, factory, corpus)
     assert pack["briefing"]["en"]["content_hash"] == content_hash
     assert pack["briefing"]["es"]["content_hash"] == content_hash
     assert hash_canonical_payload(pack["canonical"]) == content_hash
+
+
+def test_targeting_never_reaches_for_a_globally_configured_site(
+    incidents, factory, corpus, monkeypatch
+):
+    """Regression: 定向分发曾直接 load_settings().factory_database，
+    于是在干净检出里崩溃，在双站点安装里会拿另一个厂的登记册回答本厂的问题。"""
+    import hindsight_agent.workflow as workflow_module
+
+    def _explode():
+        raise AssertionError("approve_and_distribute 不得读取全局配置的站点库")
+
+    monkeypatch.setattr("hindsight_agent.config.load_settings", _explode)
+
+    case_id, content_hash = _drafted(incidents, factory, corpus)
+    rule_pack.initialize(incidents)
+    register_channels(incidents, SITE_CHANNELS)
+    result = approve_and_distribute(
+        incident_database=incidents, case_id=case_id,
+        pack_content_hash=content_hash, approver="ehs-lead",
+        factory_database=factory,
+    )
+    assert any(d.get("delivered") for d in result["deliveries"])
+
+
+def test_a_missing_site_register_degrades_instead_of_breaking(
+    incidents, factory, corpus, tmp_path
+):
+    """读不到登记册时退回按语言分发，而不是让整条审批链崩掉。"""
+    case_id, content_hash = _drafted(incidents, factory, corpus)
+    rule_pack.initialize(incidents)
+    register_channels(incidents, SITE_CHANNELS)
+    result = approve_and_distribute(
+        incident_database=incidents, case_id=case_id,
+        pack_content_hash=content_hash, approver="ehs-lead",
+        factory_database=tmp_path / "does-not-exist.db",
+    )
+    assert any(d.get("delivered") for d in result["deliveries"])
+
+
+def test_approving_into_a_role_with_no_channel_is_loud(incidents, factory, corpus):
+    """批准之后送达零人，必须留下明确信号，而不是安静地返回一个空列表。"""
+    case_id, content_hash = _drafted(incidents, factory, corpus)
+    rule_pack.initialize(incidents)
+    register_channels(incidents)  # 默认渠道全部不匹配 role-op
+
+    result = approve_and_distribute(
+        incident_database=incidents, case_id=case_id,
+        pack_content_hash=content_hash, approver="ehs-lead",
+        factory_database=factory,
+    )
+    assert result["delivered_to"] == 0
+    assert result["warning"] == "APPROVED_BUT_NO_CHANNEL"
+    assert "没有注册任何渠道" in result["detail"]
+
+    connection = sqlite3.connect(incidents)
+    kinds = [r[0] for r in connection.execute(
+        "SELECT signal_kind FROM feedback_signals WHERE case_id=?", (case_id,)
+    )]
+    connection.close()
+    assert "NO_CHANNEL_FOR_ROLE" in kinds

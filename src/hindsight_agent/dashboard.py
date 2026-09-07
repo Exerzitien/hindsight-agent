@@ -730,6 +730,7 @@ def _render_case(st, settings, case: dict[str, Any], *, as_of: str) -> None:
                 case_id=case_id,
                 pack_content_hash=artifact["content_hash"],
                 approver=approver.strip(),
+                factory_database=settings.factory_database,
             )
         except Exception as exc:
             st.error(f"分发被拒绝：{exc}")
@@ -748,8 +749,14 @@ def _render_case(st, settings, case: dict[str, Any], *, as_of: str) -> None:
         st.rerun()
 
     result = st.session_state.get(f"{case_id}:result")
-    if result:
-        st.success("已批准并分发。")
+    if result and result.get("warning") == "APPROVED_BUT_NO_CHANNEL":
+        st.error(f"已批准，但送达了 0 个人。{result['detail']}")
+        st.caption(
+            "系统没有退回全厂广播——定向分发正是为了避免那件事。"
+            "请在渠道注册表中登记该岗位后重新分发。"
+        )
+    elif result:
+        st.success(f"已批准并分发，送达 {result.get('delivered_to', 0)} 个渠道。")
         st.caption(
             "每条渠道各持有一个 HMAC 批准令牌，绑定案例、稿件哈希、渠道与有效期；"
             "幂等键保证同一稿件不会重复送达同一渠道。"

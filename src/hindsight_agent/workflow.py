@@ -390,7 +390,22 @@ def draft_for_routed(
     return {"drafted": drafted, "needs_human_writer": needs_writer}
 
 
-def _exposed_role_for_case(incident_database: Path | str, case_id: str) -> str | None:
+def _exposed_role_for_case(
+    incident_database: Path | str,
+    case_id: str,
+    *,
+    factory_database: Path | str | None = None,
+) -> str | None:
+    """Which role is actually exposed on this case's hazard path.
+
+    ``factory_database`` is a parameter rather than a global lookup on purpose.
+    Reaching for the process-wide configured site while the caller handed us a
+    different incident database is how a two-site install starts answering one
+    site's question with another site's register - and cross-site isolation is
+    one of the rule pack's immutable guarantees. It also made this function
+    untestable: it failed in a clean checkout because it insisted on a site
+    database that only exists on a configured machine.
+    """
     connection = connect(incident_database)
     try:
         row = connection.execute(
@@ -400,11 +415,18 @@ def _exposed_role_for_case(incident_database: Path | str, case_id: str) -> str |
         connection.close()
     if row is None or not row["risk_assessment_id"]:
         return None
-    from .config import load_settings
+
     import sqlite3 as _sqlite3
 
-    factory = load_settings().factory_database
-    connection = _sqlite3.connect(str(factory))
+    if factory_database is None:
+        from .config import load_settings
+
+        factory_database = load_settings().factory_database
+    if not Path(factory_database).exists():
+        # 定向分发是优化，不是安全边界：读不到登记册时退回按语言分发，
+        # 而不是让整条审批链因为一次可选查询而崩掉。
+        return None
+    connection = _sqlite3.connect(str(factory_database))
     try:
         found = connection.execute(
             "SELECT exposed_role_id FROM risk_assessments WHERE id=?",
@@ -439,6 +461,7 @@ def approve_and_distribute(
     case_id: str,
     pack_content_hash: str,
     approver: str,
+    factory_database: Path | str | None = None,
     role_id: str | None = None,
     languages: tuple[str, ...] = ("en", "es"),
     run_id: str | None = None,
@@ -461,33 +484,58 @@ def approve_and_distribute(
     # D1 是「定向」分发：默认只发给这条危险路径上真正暴露的岗位，而不是全厂。
     # 把焊接事故推给叉车班是最容易造成警报疲劳、也最容易被现场关掉的做法。
     if role_id is None:
-        role_id = _exposed_role_for_case(incident_database, case_id)
+        role_id = _exposed_role_for_case(
+            incident_database, case_id, factory_database=factory_database
+        )
     record_signal(incident_database, signal_kind="APPROVED", case_id=case_id,
                   feature={"approver": approver})
 
     register_channels(incident_database)
-    results = []
-    for language in languages:
+    targets = [
+        (language, channel)
+        for language in languages
         for channel in resolve_audience(incident_database, role_id=role_id,
-                                        language=language):
-            token = issue_token(
-                incident_database, case_id=case_id,
-                pack_content_hash=pack_content_hash,
-                channel_id=channel["channel_id"],
-                audience_size=int(channel["member_count"]), approver=approver,
-            )
-            results.append(deliver(
-                incident_database, case_id=case_id,
-                channel_id=channel["channel_id"],
-                pack_content_hash=pack_content_hash, language=language,
-                approval_token=token,
-                body=_body_for_language(artifact["pack"], language),
-            ))
-    if any(r.get("delivered") for r in results):
+                                        language=language)
+    ]
+
+    # 定向定到了一个没有任何渠道的岗位，等于批准之后没人收到。
+    # 这种失败必须是响的：审批人刚刚为这份内容签了字，如果它悄无声息地
+    # 发给了零个人，那么整套问责机制在这一步就断了。这里不退回广播——
+    # 广播正是定向分发要避免的——而是留下明确信号，让控制台把它显示出来。
+    if not targets:
+        record_signal(incident_database, signal_kind="NO_CHANNEL_FOR_ROLE",
+                      case_id=case_id, reason_code="APPROVED_BUT_NO_CHANNEL",
+                      feature={"role_id": role_id, "languages": list(languages)})
+        return {
+            "case_id": case_id, "deliveries": [], "delivered_to": 0,
+            "warning": "APPROVED_BUT_NO_CHANNEL",
+            "detail": (
+                f"岗位 {role_id or '（未识别）'} 没有注册任何渠道，"
+                f"这份稿件已批准但没有送达任何人。请先在渠道注册表中登记该岗位。"
+            ),
+        }
+
+    results = []
+    for language, channel in targets:
+        token = issue_token(
+            incident_database, case_id=case_id,
+            pack_content_hash=pack_content_hash,
+            channel_id=channel["channel_id"],
+            audience_size=int(channel["member_count"]), approver=approver,
+        )
+        results.append(deliver(
+            incident_database, case_id=case_id,
+            channel_id=channel["channel_id"],
+            pack_content_hash=pack_content_hash, language=language,
+            approval_token=token,
+            body=_body_for_language(artifact["pack"], language),
+        ))
+    delivered = sum(1 for r in results if r.get("delivered"))
+    if delivered:
         transition(incident_database, case_id, DISTRIBUTED, actor="system",
                    reason_code="DELIVERED", run_id=run_id,
-                   detail=f"{sum(1 for r in results if r.get('delivered'))} 个渠道")
-    return {"case_id": case_id, "deliveries": results}
+                   detail=f"{delivered} 个渠道")
+    return {"case_id": case_id, "deliveries": results, "delivered_to": delivered}
 
 
 def reject_case(
