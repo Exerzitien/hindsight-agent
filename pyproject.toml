@@ -53,3 +53,8 @@ hindsight_agent = ["seed/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Tests import the working tree, never whatever happens to be installed.
+# Without this, a stale editable install elsewhere on the machine silently
+# takes precedence and the suite reports on code nobody is editing - which is
+# exactly how a green run can be meaningless.
+pythonpath = ["src"]

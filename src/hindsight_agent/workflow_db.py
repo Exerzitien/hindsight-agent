@@ -205,6 +205,21 @@ CREATE TABLE IF NOT EXISTS reminders (
     sent_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS pack_artifacts (
+    content_hash TEXT PRIMARY KEY,
+    case_id TEXT NOT NULL REFERENCES cases(case_id) ON DELETE CASCADE,
+    draft_id TEXT NOT NULL,
+    risk_assessment_id TEXT,
+    assessment_code TEXT,
+    incident_citation TEXT,
+    pack_json TEXT NOT NULL,
+    canonical_json TEXT NOT NULL,
+    self_check_json TEXT NOT NULL,
+    pack_version TEXT NOT NULL,
+    model_id TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS feedback_signals (
     signal_id TEXT PRIMARY KEY,
     case_id TEXT REFERENCES cases(case_id) ON DELETE SET NULL,
@@ -219,6 +234,7 @@ CREATE INDEX IF NOT EXISTS idx_cases_incident ON cases(incident_key);
 CREATE INDEX IF NOT EXISTS idx_transitions_case ON case_transitions(case_id, seq);
 CREATE INDEX IF NOT EXISTS idx_deliveries_case ON deliveries(case_id);
 CREATE INDEX IF NOT EXISTS idx_signals_kind ON feedback_signals(signal_kind, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pack_artifacts_case ON pack_artifacts(case_id, created_at DESC);
 
 DROP VIEW IF EXISTS "案例状态";
 CREATE VIEW "案例状态" AS
@@ -470,3 +486,130 @@ def record_signal(
     finally:
         connection.close()
     return signal_id
+
+
+class PackArtifactError(RuntimeError):
+    """Raised when a stored pack body does not match the hash it is filed under."""
+
+
+def store_pack_artifact(
+    database_path: Path | str,
+    *,
+    case_id: str,
+    pack: dict[str, Any],
+    self_check: dict[str, Any],
+) -> str:
+    """Persist the body a person is about to approve, filed under its own hash.
+
+    Without this the approval token binds a hash whose body exists nowhere:
+    the reviewer approves a string of hex, and workers receive an empty
+    payload. Storing the body is what makes the token a real binding rather
+    than a gesture.
+
+    Append-only by construction. The same claims always hash to the same
+    value, so a re-draft that changes nothing is a no-op; a re-draft that
+    changes anything gets a new hash and a new row, and the row a person
+    already approved is never rewritten underneath them.
+    """
+    from .learning_pack import hash_canonical_payload
+
+    canonical = pack.get("canonical")
+    if not isinstance(canonical, dict):
+        raise PackArtifactError(
+            "学习包缺少 canonical 字段，无法证明正文与哈希一致；拒绝入库。"
+        )
+    content_hash = hash_canonical_payload(canonical)
+    declared = pack.get("content_hash")
+    if declared != content_hash:
+        raise PackArtifactError(
+            f"学习包自称的哈希 {declared} 与正文重算结果 {content_hash} 不一致；拒绝入库。"
+        )
+
+    connection = connect(database_path)
+    try:
+        with connection:
+            connection.execute(
+                "INSERT OR IGNORE INTO pack_artifacts(content_hash, case_id, draft_id, "
+                "risk_assessment_id, assessment_code, incident_citation, pack_json, "
+                "canonical_json, self_check_json, pack_version, model_id, created_at) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    content_hash, case_id, str(pack.get("draft_id") or ""),
+                    pack.get("risk_assessment_id"), pack.get("assessment_code"),
+                    pack.get("incident_citation"),
+                    json.dumps(pack, ensure_ascii=False),
+                    json.dumps(canonical, ensure_ascii=False),
+                    json.dumps(self_check, ensure_ascii=False),
+                    str(pack.get("pack_version") or ""), pack.get("model_id"),
+                    utc_now(),
+                ),
+            )
+    finally:
+        connection.close()
+    return content_hash
+
+
+def load_pack_artifact(
+    database_path: Path | str, content_hash: str, *, required: bool = True
+) -> dict[str, Any] | None:
+    """Read a stored pack back, re-hashing it before handing it over.
+
+    The check is not ceremonial. Anything that reaches a worker's phone has to
+    be the thing the approver read, and the only way to know that here is to
+    recompute the hash from the stored claims rather than trusting the column
+    it is filed under.
+    """
+    from .learning_pack import hash_canonical_payload
+
+    connection = connect(database_path)
+    try:
+        row = connection.execute(
+            "SELECT * FROM pack_artifacts WHERE content_hash=?", (content_hash,)
+        ).fetchone()
+    finally:
+        connection.close()
+
+    if row is None:
+        if required:
+            raise PackArtifactError(
+                f"没有哈希为 {content_hash} 的学习包正文；这条案例不能分发。"
+            )
+        return None
+
+    canonical = json.loads(row["canonical_json"])
+    recomputed = hash_canonical_payload(canonical)
+    if recomputed != content_hash:
+        raise PackArtifactError(
+            f"正文与哈希不符：入库为 {content_hash}，重算为 {recomputed}。"
+            f"这份稿件已被改动，拒绝分发。"
+        )
+
+    return {
+        "content_hash": content_hash,
+        "case_id": row["case_id"],
+        "draft_id": row["draft_id"],
+        "risk_assessment_id": row["risk_assessment_id"],
+        "assessment_code": row["assessment_code"],
+        "incident_citation": row["incident_citation"],
+        "pack": json.loads(row["pack_json"]),
+        "self_check": json.loads(row["self_check_json"]),
+        "pack_version": row["pack_version"],
+        "model_id": row["model_id"],
+        "created_at": row["created_at"],
+    }
+
+
+def pack_artifact_for_case(
+    database_path: Path | str, case_id: str
+) -> dict[str, Any] | None:
+    """The body currently attached to a case, or None if it has not been drafted."""
+    connection = connect(database_path)
+    try:
+        row = connection.execute(
+            "SELECT draft_content_hash FROM cases WHERE case_id=?", (case_id,)
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None or not row["draft_content_hash"]:
+        return None
+    return load_pack_artifact(database_path, row["draft_content_hash"], required=False)

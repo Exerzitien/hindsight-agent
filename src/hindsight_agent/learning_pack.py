@@ -32,6 +32,21 @@ from typing import Any
 
 PACK_VERSION = "learning-pack-v1.0"
 
+
+def hash_canonical_payload(payload: dict[str, Any]) -> str:
+    """The one place a learning pack's content hash is computed.
+
+    Every consumer - the draft that produces the hash, the approval token that
+    binds it, and the artifact store that re-checks it on the way out - calls
+    this same function. A second copy of this serialization anywhere else would
+    be free to drift, and a drifting hash silently breaks the guarantee that
+    what a person approved is what workers received.
+    """
+    encoded = json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
 CLAIM_INCIDENT_FACT = "INCIDENT_FACT"
 CLAIM_SITE_FACT = "SITE_FACT"
 CLAIM_REQUIREMENT = "REQUIREMENT"
@@ -165,8 +180,16 @@ class LearningDraft:
                 return claim
         return None
 
-    def content_hash(self) -> str:
-        payload = {
+    def canonical_payload(self) -> dict[str, Any]:
+        """The claims, and only the claims, in the exact shape that is hashed.
+
+        Kept separate from :meth:`content_hash` so that a stored pack can be
+        re-hashed later by the same code that produced the hash. Anything that
+        is not a claim - rendering, headings, timestamps, the model id - is
+        deliberately outside this payload, so re-rendering the same claims in a
+        newer template does not invalidate an approval a person already gave.
+        """
+        return {
             "risk_assessment_id": self.risk_assessment_id,
             "incident_citation": self.incident_citation,
             "briefing": [c.to_dict() for c in self.briefing_claims],
@@ -174,8 +197,9 @@ class LearningDraft:
             "quiz": [q.to_dict() for q in self.quiz],
             "unknowns": self.unknowns,
         }
-        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+    def content_hash(self) -> str:
+        return hash_canonical_payload(self.canonical_payload())
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
@@ -332,4 +356,8 @@ def render_pack(draft: LearningDraft) -> dict[str, Any]:
             "en": render_toolbox_talk(draft, "en"),
             "es": render_toolbox_talk(draft, "es"),
         },
+        # The claims exactly as hashed. Carried alongside the rendered pack so
+        # that whoever stores this pack can prove later that the body still
+        # hashes to the value a person approved.
+        "canonical": draft.canonical_payload(),
     }

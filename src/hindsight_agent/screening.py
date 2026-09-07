@@ -331,9 +331,23 @@ def archive_line(case: dict[str, Any], reason_code: str, detail: str = "") -> st
 def weekly_archive_digest(
     database_path: Path | str, *, limit: int = 500
 ) -> dict[str, Any]:
-    """W6 + D5 的数据源：本周静默归档了什么，为什么。"""
+    """W6 + D5 的数据源：本周静默归档了什么，为什么。
+
+    ``limit`` 只截断给人读的明细行，不截断统计。此前 ``archived`` 直接取被
+    LIMIT 截断后的行数，于是归档 495 条时晨报显示 200 条——用查询上限冒充计数，
+    会让「我们替你挡掉了多少」这个本系统最核心的数字系统性偏小。
+    """
     connection = connect(database_path)
     try:
+        total = connection.execute(
+            "SELECT COUNT(*) AS n FROM cases AS c "
+            "JOIN case_transitions AS t ON t.case_id = c.case_id AND t.to_state='ARCHIVED'"
+        ).fetchone()["n"]
+        reason_rows = connection.execute(
+            "SELECT t.reason_code AS reason_code, COUNT(*) AS n FROM cases AS c "
+            "JOIN case_transitions AS t ON t.case_id = c.case_id AND t.to_state='ARCHIVED' "
+            "GROUP BY t.reason_code ORDER BY n DESC"
+        ).fetchall()
         rows = connection.execute(
             "SELECT c.incident_key, c.level, c.case_id, t.reason_code, t.detail, t.occurred_at "
             "FROM cases AS c "
@@ -345,7 +359,10 @@ def weekly_archive_digest(
         connection.close()
 
     lines = [archive_line(dict(row), row["reason_code"], row["detail"] or "") for row in rows]
-    by_reason: dict[str, int] = {}
-    for row in rows:
-        by_reason[row["reason_code"]] = by_reason.get(row["reason_code"], 0) + 1
-    return {"archived": len(rows), "by_reason_code": by_reason, "lines": lines}
+    by_reason = {row["reason_code"]: int(row["n"]) for row in reason_rows}
+    return {
+        "archived": int(total),
+        "by_reason_code": by_reason,
+        "lines": lines,
+        "lines_truncated": int(total) > len(lines),
+    }

@@ -388,9 +388,13 @@ def monday_digest(database_path: Path | str) -> dict[str, Any]:
             "SUM(CASE WHEN completed_at IS NOT NULL THEN 1 ELSE 0 END) AS done, "
             "AVG(quiz_score) AS avg_score FROM completions"
         ).fetchone()
+        # 与 workflow.OPEN_STATES 中「等待某个人动作」的那部分保持一致。
+        # 少算 CLASSIFIED 会让晨报在 5 条红级已路由待处理时写「需要你决定 0 条」，
+        # 而告警节流又因为这 5 条而抑制后续同路径告警——两边同时沉默。
         pending = connection.execute(
             "SELECT COUNT(*) AS n FROM cases WHERE state IN "
-            "('PENDING_APPROVAL','REMINDED','ESCALATED','NEEDS_HUMAN_WRITER')"
+            "('CLASSIFIED','DRAFTED','SELF_CHECK_OK','NEEDS_HUMAN_WRITER',"
+            "'PENDING_APPROVAL','REMINDED','ESCALATED')"
         ).fetchone()
     finally:
         connection.close()

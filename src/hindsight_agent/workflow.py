@@ -69,11 +69,14 @@ from .workflow_db import (
     REJECTED,
     CLOSED_REJECTED,
     SELF_CHECK_OK,
+    PackArtifactError,
     cases_in_state,
     connect,
     ensure_workflow_schema,
+    load_pack_artifact,
     open_case,
     record_signal,
+    store_pack_artifact,
     transition,
 )
 
@@ -369,7 +372,12 @@ def draft_for_routed(
                        run_id=run_id)
             needs_writer.append(case_id)
             continue
-        content_hash = result["pack"]["content_hash"]
+        # 先把正文按哈希存下来，再把案例推到待审批。
+        # 顺序不能反：一个人被叫来审批一份取不出来的稿件，是最糟的失败方式。
+        content_hash = store_pack_artifact(
+            incident_database, case_id=case_id, pack=result["pack"],
+            self_check=report,
+        )
         transition(incident_database, case_id, SELF_CHECK_OK, actor="agent",
                    reason_code="SELF_CHECK_PASSED",
                    detail=f"删除 {len(report['removed_claim_ids'])} 条无出处主张",
@@ -407,6 +415,24 @@ def _exposed_role_for_case(incident_database: Path | str, case_id: str) -> str |
     return found[0] if found else None
 
 
+def _body_for_language(pack: dict[str, Any], language: str) -> dict[str, Any]:
+    """The half of the approved pack that this channel's language actually reads.
+
+    Both languages render from the same claim list and therefore share one
+    content hash, so sending only one language still delivers exactly what was
+    approved. The hash travels with it so a recipient can check.
+    """
+    return {
+        "content_hash": pack.get("content_hash"),
+        "assessment_code": pack.get("assessment_code"),
+        "incident_citation": pack.get("incident_citation"),
+        "language": language,
+        "briefing": (pack.get("briefing") or {}).get(language),
+        "toolbox_talk": (pack.get("toolbox_talk") or {}).get(language),
+        "unknowns": pack.get("unknowns"),
+    }
+
+
 def approve_and_distribute(
     *,
     incident_database: Path | str,
@@ -418,6 +444,17 @@ def approve_and_distribute(
     run_id: str | None = None,
 ) -> dict[str, Any]:
     """A2/A3 → D1: a person approves, a token is issued, delivery happens once."""
+    # 取正文在改状态之前。若正文取不出来，这条案例应当原地停在待审批，
+    # 而不是变成一条「已批准但没有内容」的记录——那种记录在审计里最难解释。
+    artifact = load_pack_artifact(
+        incident_database, pack_content_hash, required=False
+    )
+    if artifact is None:
+        raise PackArtifactError(
+            f"案例 {case_id} 没有哈希为 {pack_content_hash} 的正文可供分发；"
+            f"批准被拒绝。请先重新起草。"
+        )
+
     transition(incident_database, case_id, APPROVED, actor=approver,
                reason_code="EHS_APPROVED", run_id=run_id)
 
@@ -444,6 +481,7 @@ def approve_and_distribute(
                 channel_id=channel["channel_id"],
                 pack_content_hash=pack_content_hash, language=language,
                 approval_token=token,
+                body=_body_for_language(artifact["pack"], language),
             ))
     if any(r.get("delivered") for r in results):
         transition(incident_database, case_id, DISTRIBUTED, actor="system",
