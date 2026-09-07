@@ -128,6 +128,60 @@ hindsight-grounding-collect
 写入 `data/corpus/`。**不跑这一步，内容生成会因为没有可引用来源而拒绝出稿。**
 `data/` 不进版本库，所以每台机器都要各跑一次。
 
+## 一条命令跑通全流程
+
+数据和语料备齐之后，这一条命令就够了：
+
+```bash
+hindsight-demo --reset
+```
+
+它会先做前置检查（数据在不在、模型端点通不通），再跑完 W1→D5，最后把状态停在
+「有几条待你审批」。任何一步不满足，它会直接说是哪一步、怎么修，而不是跑到一半才炸。
+
+```
+前置检查
+  数据就绪 · 事故 105,996 条 · 语料 1,393 段
+  模型可达 · <你的模型> @ <你的端点> （0.4s）
+
+运行工作流 W1→D5
+
+结果
+  考察 · 500 条外部事故
+  确定性归档 · 495 条（每条都有理由码）
+  进入人工队列 · 5 条　分级 {'RED': 5, 'YELLOW': 0}
+  已起草待审批 · 3 条
+
+下一步：hindsight-dashboard   打开控制台，在「待你决定」里审批
+```
+
+常用参数：`--skip-model` 只跑筛选与路由（不调模型）；`--as-of YYYY-MM-DD` 固定控制
+有效期基准日，结果可复现；`--draft-limit N` 控制起草几条（每条都要调一次模型）。
+
+### 配置模型
+
+支持三种 provider，用环境变量切换。
+
+**任何 OpenAI 兼容端点**（vLLM、SGLang、LM Studio、Ollama 的 OpenAI 接口、自建网关）：
+
+```bash
+export HINDSIGHT_MODEL_PROVIDER=openai
+export OPENAI_BASE_URL=http://your-host:1234/v1
+export OPENAI_MODEL_ID=<模型标识>
+export OPENAI_API_KEY=<没有鉴权就留空>
+```
+
+这条路径不要求服务端支持严格 `response_format`：模型回什么都由本地 Pydantic 校验，
+解析失败会带着错误重试一次，绝不成环。若你的端点确实支持严格结构化输出，可设
+`HINDSIGHT_GENERATOR=strands` 切回原生路径。
+
+**Ollama**（默认）：`OLLAMA_HOST`、`OLLAMA_MODEL_ID`。
+**Bedrock**：`HINDSIGHT_MODEL_PROVIDER=bedrock`、`BEDROCK_MODEL_ID`。
+
+> 端点写的是「谁能连上」，不是「谁在跑」。如果模型跑在你自己的机器上而流程跑在别的
+> 环境里（容器、虚拟机、远程会话），`127.0.0.1` 指的是各自的本机——需要先把它暴露成
+> 双方都能访问的地址。
+
 ## 日常使用
 
 ```powershell
@@ -189,6 +243,7 @@ hindsight-screen              残余路径验证 + 四级路由（红/黄/绿/�
 hindsight-grounding-collect   采集 29 CFR 与 Fatal Facts 接地语料
 hindsight-draft               生成带出处的简报与双语班前会
 hindsight-dashboard           中文业务控制台
+hindsight-demo                一条命令跑通全流程并停在可审批状态
 ```
 
 ## 测试

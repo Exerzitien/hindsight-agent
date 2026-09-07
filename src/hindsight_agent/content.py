@@ -106,7 +106,13 @@ class ClaimGenerator(Protocol):
 
 
 class StrandsClaimGenerator:
-    """Structured generation through the project's configured Strands model."""
+    """Structured generation through the project's configured Strands model.
+
+    Uses the provider's native structured-output path, which for OpenAI-shaped
+    servers means ``response_format`` with a strict JSON schema. Hosted APIs
+    support that; many self-hosted servers do not, or reject the schema for
+    nested models. When that is the case, use :class:`JsonClaimGenerator`.
+    """
 
     def __init__(self, model: Any | None = None, model_id: str | None = None) -> None:
         from strands import Agent
@@ -116,10 +122,181 @@ class StrandsClaimGenerator:
 
             model = _model()
         self._agent = Agent(model=model, system_prompt=SYSTEM_PROMPT, name="HindsightContentDrafter")
-        self.model_id = model_id or os.getenv("OLLAMA_MODEL_ID", "") or os.getenv("BEDROCK_MODEL_ID", "")
+        if model_id is None:
+            from .rag_agent import active_model_id
+
+            model_id = active_model_id()
+        self.model_id = model_id
 
     def __call__(self, prompt: str) -> GeneratedDraftModel:
         return self._agent.structured_output(GeneratedDraftModel, prompt)
+
+
+#: 附在提示词末尾的输出契约。写成显式 JSON 形状，而不是依赖服务端 schema 强制，
+#: 因为自建推理服务对 response_format 的支持参差不齐。
+JSON_CONTRACT = """
+Reply with one JSON object and nothing else. No prose before or after it, no
+markdown fences. The object has exactly these keys:
+
+{
+  "briefing_claims": [ {claim}, ... ],
+  "talk_claims":     [ {claim}, ... ],
+  "quiz":            [ {quiz},  ... ],
+  "unknowns":        [ "string", ... ]
+}
+
+{claim} = {
+  "claim_id": "c1",
+  "claim_type": "INCIDENT_FACT" | "SITE_FACT" | "REQUIREMENT" | "CONTROL" | "UNKNOWN",
+  "text_en": "one sentence",
+  "text_es": "una oración",
+  "citations": ["id from ALLOWED CITATIONS"],
+  "quote": null,
+  "quote_citation": null,
+  "control_id": null
+}
+
+{quiz} = {
+  "question_id": "q1",
+  "question_en": "...", "question_es": "...",
+  "options_en": ["...", "..."], "options_es": ["...", "..."],
+  "correct_index": 0,
+  "claim_id": "c1"
+}
+""".strip()
+
+
+def extract_json_object(text: str) -> dict[str, Any]:
+    """Pull the first balanced JSON object out of a model's reply.
+
+    Self-hosted models wrap their answer in all sorts of things - markdown
+    fences, a preamble, a reasoning block. Rather than trying to enumerate
+    those wrappers, this scans for the first ``{`` and returns the substring
+    that balances, ignoring braces inside strings. Anything that is not valid
+    JSON raises, and the caller retries with the error attached.
+    """
+    depth = 0
+    start = -1
+    in_string = False
+    escaped = False
+    for index, char in enumerate(text):
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            if depth == 0:
+                start = index
+            depth += 1
+        elif char == "}":
+            if depth:
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    return json.loads(text[start : index + 1])
+    raise ValueError("回复中没有找到完整的 JSON 对象。")
+
+
+class JsonClaimGenerator:
+    """Plain chat completion plus our own validation.
+
+    This exists because the guarantee that matters is not that the server
+    enforced a schema - it is that *we* validated what came back. Pydantic
+    validation happens here either way, so dropping the server-side schema
+    requirement costs nothing and makes the project run against any
+    OpenAI-compatible endpoint rather than only the ones that implement strict
+    ``response_format``.
+
+    One retry, with the validation error handed back to the model. Never a
+    loop: the caller's own regenerate-once policy sits above this.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        model_id: str,
+        api_key: str = "",
+        temperature: float = 0.2,
+        max_tokens: int = 4096,
+        timeout: float = 300.0,
+    ) -> None:
+        from openai import OpenAI
+
+        self._client = OpenAI(base_url=base_url, api_key=api_key or "not-required",
+                              timeout=timeout)
+        self.model_id = model_id
+        self._temperature = temperature
+        self._max_tokens = max_tokens
+        #: 便于排查：最近一次调用的原始回复。
+        self.last_raw: str = ""
+
+    def _complete(self, messages: list[dict[str, str]]) -> str:
+        response = self._client.chat.completions.create(
+            model=self.model_id, messages=messages,
+            temperature=self._temperature, max_tokens=self._max_tokens,
+        )
+        return response.choices[0].message.content or ""
+
+    def __call__(self, prompt: str) -> GeneratedDraftModel:
+        messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"{prompt}\n\n{JSON_CONTRACT}"},
+        ]
+        self.last_raw = self._complete(messages)
+        try:
+            return GeneratedDraftModel.model_validate(extract_json_object(self.last_raw))
+        except Exception as first_error:
+            messages.append({"role": "assistant", "content": self.last_raw})
+            messages.append({
+                "role": "user",
+                "content": (
+                    f"That reply could not be parsed: {first_error}\n"
+                    f"Reply again with one valid JSON object only, matching the "
+                    f"contract exactly. No prose, no markdown fences."
+                ),
+            })
+            self.last_raw = self._complete(messages)
+            return GeneratedDraftModel.model_validate(
+                extract_json_object(self.last_raw)
+            )
+
+
+def build_generator() -> ClaimGenerator:
+    """按环境变量挑一个生成器。
+
+    provider=openai 时默认走 JSON 校验路径，因为它对服务端没有额外要求；
+    若你的端点确实支持严格 response_format，设 HINDSIGHT_GENERATOR=strands
+    可切回原生结构化输出。
+    """
+    from .rag_agent import (
+        ENV_OPENAI_API_KEY,
+        ENV_OPENAI_BASE_URL,
+        ENV_OPENAI_MODEL_ID,
+        ENV_PROVIDER,
+        active_model_id,
+    )
+
+    provider = os.getenv(ENV_PROVIDER, "ollama").casefold()
+    style = os.getenv("HINDSIGHT_GENERATOR", "").casefold()
+    if provider == "openai" and style != "strands":
+        base_url = os.getenv(ENV_OPENAI_BASE_URL, "").strip()
+        model_id = os.getenv(ENV_OPENAI_MODEL_ID, "").strip()
+        if not base_url or not model_id:
+            raise RuntimeError(
+                f"provider=openai 需要 {ENV_OPENAI_BASE_URL} 与 "
+                f"{ENV_OPENAI_MODEL_ID} 同时设置。"
+            )
+        return JsonClaimGenerator(
+            base_url=base_url, model_id=model_id,
+            api_key=os.getenv(ENV_OPENAI_API_KEY, ""),
+        )
+    return StrandsClaimGenerator(model_id=active_model_id() or None)
 
 
 def _citation_menu(bundle: dict[str, Any], incident_key: str) -> dict[str, Any]:
@@ -267,7 +444,7 @@ def generate_learning_draft(
         index=index,
     )
     path = bundle["risk_path"]
-    generator = generator or StrandsClaimGenerator()
+    generator = generator or build_generator()
 
     draft = LearningDraft(
         draft_id=f"draft:{risk_assessment_id}:{incident_key}",

@@ -620,9 +620,9 @@ def main() -> int:
     settings = load_settings()
     generator = None
     if args.draft:
-        from .content import StrandsClaimGenerator
+        from .content import build_generator
 
-        generator = StrandsClaimGenerator()
+        generator = build_generator()
 
     result = run_full_workflow(
         incident_database=settings.incident_database,

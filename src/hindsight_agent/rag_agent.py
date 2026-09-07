@@ -97,8 +97,49 @@ def record_match_decision(
     )
 
 
+#: 环境变量名集中在这里，避免同一个名字在多个文件里各写一遍。
+ENV_PROVIDER = "HINDSIGHT_MODEL_PROVIDER"
+ENV_OPENAI_BASE_URL = "OPENAI_BASE_URL"
+ENV_OPENAI_API_KEY = "OPENAI_API_KEY"
+ENV_OPENAI_MODEL_ID = "OPENAI_MODEL_ID"
+
+
+def active_model_id() -> str:
+    """当前 provider 下真正生效的模型标识，用于写进稿件的可追溯字段。"""
+    provider = os.getenv(ENV_PROVIDER, "ollama").casefold()
+    if provider == "openai":
+        return os.getenv(ENV_OPENAI_MODEL_ID, "")
+    if provider == "bedrock":
+        return os.getenv("BEDROCK_MODEL_ID", "")
+    return os.getenv("OLLAMA_MODEL_ID", "")
+
+
 def _model():
-    provider = os.getenv("HINDSIGHT_MODEL_PROVIDER", "ollama").casefold()
+    provider = os.getenv(ENV_PROVIDER, "ollama").casefold()
+    if provider == "openai":
+        # 任何 OpenAI 兼容端点：vLLM、SGLang、LM Studio、自建网关等。
+        # base_url 与 api_key 走 client_args（OpenAI SDK 的标准参数），
+        # model_id 走模型配置——这两处的名字来自 strands 的构造签名本身，
+        # 不是猜的。
+        from strands.models.openai import OpenAIModel
+
+        base_url = os.getenv(ENV_OPENAI_BASE_URL, "").strip()
+        if not base_url:
+            raise RuntimeError(
+                f"provider=openai 需要 {ENV_OPENAI_BASE_URL}，例如 "
+                f"https://your-host/v1 。当前未设置。"
+            )
+        model_id = os.getenv(ENV_OPENAI_MODEL_ID, "").strip()
+        if not model_id:
+            raise RuntimeError(
+                f"provider=openai 需要 {ENV_OPENAI_MODEL_ID}（模型标识，"
+                f"不是密钥）。当前未设置。"
+            )
+        client_args: dict[str, object] = {"base_url": base_url}
+        # 自建端点常常不校验密钥，但 OpenAI SDK 要求这个字段非空。
+        client_args["api_key"] = os.getenv(ENV_OPENAI_API_KEY, "") or "not-required"
+        return OpenAIModel(client_args=client_args, model_id=model_id)
+
     if provider == "bedrock":
         from strands.models import BedrockModel
 
