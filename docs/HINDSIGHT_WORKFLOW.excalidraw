@@ -32,11 +32,11 @@
       "height": 62,
       "fontSize": 42,
       "fontFamily": 2,
-      "text": "Hindsight Safety Agent：每日事故监控与本厂风险匹配工作流",
+      "text": "Hindsight Safety Agent：每日巡检与本厂风险匹配工作流",
       "textAlign": "left",
       "verticalAlign": "middle",
       "containerId": null,
-      "originalText": "Hindsight Safety Agent：每日事故监控与本厂风险匹配工作流",
+      "originalText": "Hindsight Safety Agent：每日巡检与本厂风险匹配工作流",
       "autoResize": false,
       "lineHeight": 1.35
     },

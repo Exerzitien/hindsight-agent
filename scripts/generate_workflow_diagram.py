@@ -170,7 +170,7 @@ def build_excalidraw() -> dict:
             55,
             2170,
             62,
-            "Hindsight Safety Agent：每日事故监控与本厂风险匹配工作流",
+            "Hindsight Safety Agent：每日巡检与本厂风险匹配工作流",
             42,
             "#162126",
         )
@@ -273,7 +273,7 @@ def build_svg() -> str:
         "</defs>",
         '<rect width="100%" height="100%" fill="#fbfcfc"/>',
         '<text x="70" y="86" font-family="Arial, Microsoft YaHei, sans-serif" '
-        'font-size="42" font-weight="700" fill="#162126">Hindsight Safety Agent：每日事故监控与本厂风险匹配工作流</text>',
+        'font-size="42" font-weight="700" fill="#162126">Hindsight Safety Agent：每日巡检与本厂风险匹配工作流</text>',
         '<text x="72" y="135" font-family="Arial, Microsoft YaHei, sans-serif" '
         'font-size="21" fill="#59676d">每一步都复用成熟组件；项目代码只实现事故证据、工厂风险和可解释评分的业务契约</text>',
     ]
@@ -334,7 +334,7 @@ def build_png(path: Path) -> None:
     draw = ImageDraw.Draw(image)
     draw.text(
         (70, 48),
-        "Hindsight Safety Agent：每日事故监控与本厂风险匹配工作流",
+        "Hindsight Safety Agent：每日巡检与本厂风险匹配工作流",
         font=_font(42, bold=True),
         fill="#162126",
     )

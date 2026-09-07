@@ -259,7 +259,7 @@ def _parser(description: str) -> argparse.ArgumentParser:
 
 
 def main() -> int:
-    parser = _parser("运行 Hindsight 每日事故监控与工厂风险匹配。")
+    parser = _parser("运行 Hindsight 每日巡检与工厂风险匹配。")
     parser.add_argument("--skip-collect", action="store_true")
     parser.add_argument("--skip-import", action="store_true")
     args = parser.parse_args()

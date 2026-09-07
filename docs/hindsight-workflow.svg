@@ -3,7 +3,7 @@
 <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#59676d"/></marker>
 </defs>
 <rect width="100%" height="100%" fill="#fbfcfc"/>
-<text x="70" y="86" font-family="Arial, Microsoft YaHei, sans-serif" font-size="42" font-weight="700" fill="#162126">Hindsight Safety Agent：每日事故监控与本厂风险匹配工作流</text>
+<text x="70" y="86" font-family="Arial, Microsoft YaHei, sans-serif" font-size="42" font-weight="700" fill="#162126">Hindsight Safety Agent：每日巡检与本厂风险匹配工作流</text>
 <text x="72" y="135" font-family="Arial, Microsoft YaHei, sans-serif" font-size="21" fill="#59676d">每一步都复用成熟组件；项目代码只实现事故证据、工厂风险和可解释评分的业务契约</text>
 <rect x="70" y="245" width="280" height="260" rx="7" fill="#e8f1ee" stroke="#285b4c" stroke-width="2"/>
 <text x="210" y="293" text-anchor="middle" font-family="Arial, Microsoft YaHei, sans-serif" font-size="23" font-weight="700" fill="#285b4c">1. 每日触发</text>
