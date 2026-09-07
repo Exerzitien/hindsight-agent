@@ -169,6 +169,14 @@ def run_demo(
     corpus = settings.project_root / "data" / "corpus" / "grounding.db"
 
     print("\n前置检查")
+    # 先报「我在用哪一份代码和哪一个库」。
+    # 这个项目在审计里栽过一次：一个装在别处的可编辑安装悄悄接管了导入，
+    # 于是测试跑的是一份冻结副本，而所有人都以为在测工作树。同一类混淆
+    # 也会发生在数据上——从 clone 目录直接跑，很可能读到另一份数据库，
+    # 而输出看上去完全正常。把它打出来，这类问题就只能存活几秒。
+    _say("代码", str(Path(__file__).resolve().parent))
+    _say("项目根", str(settings.project_root))
+    _say("事故库", str(settings.incident_database))
     data_info = check_data(settings)
     _say("数据就绪",
          f"事故 {data_info['incidents']:,} 条 · 语料 {data_info['corpus_passages']:,} 段")
@@ -207,6 +215,10 @@ def run_demo(
     counts = result["screening"]
     print("\n结果")
     _say("考察", f"{counts['considered']} 条外部事故")
+    processed = counts["archived"] + counts["classified"] + counts["quarantined"]
+    if counts["considered"] and not processed:
+        _say("说明", "这一批全部在之前的运行里处理过了（W3 去重），"
+                     "所以本轮没有新动作。要重来一次请加 --reset。")
     _say("确定性归档", f"{counts['archived']} 条（每条都有理由码）")
     _say("抽取隔离", f"{counts['quarantined']} 条")
     _say("进入人工队列", f"{counts['classified']} 条　分级 {result['levels']}")
@@ -241,6 +253,9 @@ def main() -> int:
             reset=args.reset, skip_model=args.skip_model,
         )
     except PreflightError as error:
+        # 先把已经打出来的进度冲出去，否则错误（stderr）会插到进度（stdout）前面，
+        # 人看到的顺序就是反的。
+        sys.stdout.flush()
         print(f"\n前置检查未通过：\n  {error}\n", file=sys.stderr)
         return 2
 
