@@ -113,12 +113,24 @@ def initialize(
 ) -> RulePack:
     """S3: create and activate v1 if the site has no rule pack yet."""
     ensure_workflow_schema(database_path)
-    existing = active_pack(database_path, required=False)
-    if existing is not None:
-        return existing
 
+    # Validate before looking at state. A payload that disables the safety
+    # kernel must be refused whether or not a pack already exists - otherwise
+    # the check depends on call order, which is how a guarantee quietly dies.
     body = dict(payload or DEFAULT_PAYLOAD)
     _validate(body)
+
+    existing = active_pack(database_path, required=False)
+    if existing is not None:
+        # Re-initialising is a no-op by design, but silently dropping an
+        # explicit payload would let a caller believe they had configured
+        # something. Changes to a live pack go through the diff flow.
+        if payload is not None and payload_hash(body) != payload_hash(existing.payload):
+            raise RulePackError(
+                f"已有生效规则包 {existing.version}；不能用 initialize 覆盖它。"
+                "修改请走 propose_diffs → decide_diff，或先 rollback。"
+            )
+        return existing
     version = "rp-v1"
     connection = connect(database_path)
     try:
