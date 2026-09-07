@@ -66,6 +66,27 @@ class RecordingStreamlit:
     def metric(self, label="", value="", **kwargs):
         self.text.append(f"{label}={value}")
 
+    # 输入控件：记录标签，返回一个「什么都没填、没点」的中性值，
+    # 这样渲染路径能被完整走一遍，而不会触发任何写操作。
+    def text_input(self, label="", value="", **kwargs):
+        self.text.append(str(label)); return value
+    def checkbox(self, label="", **kwargs):
+        self.text.append(str(label)); return False
+    def button(self, label="", **kwargs):
+        self.text.append(str(label)); return False
+    def selectbox(self, label="", options=(), format_func=str, **kwargs):
+        self.text.append(str(label))
+        options = list(options)
+        return options[0] if options else None
+    def link_button(self, label="", url="", **kwargs):
+        self.text.append(str(label))
+    def divider(self, **kwargs): pass
+    def title(self, body="", **kwargs): self.text.append(str(body))
+
+    @property
+    def session_state(self):
+        return {}
+
     # 容器类
     @contextmanager
     def _ctx(self):
@@ -252,3 +273,47 @@ def test_the_digest_counts_routed_cases_as_awaiting_a_person(incidents):
     digest = monday_digest(incidents)
     assert digest["awaiting_you"] == 1
     assert "需要你决定 1 条" in digest["headline"]
+
+
+def test_a_routed_case_without_a_draft_still_renders_end_to_end(incidents, factory,
+                                                                corpus, tmp_path):
+    """CLASSIFIED 的红级案例还没有稿件，界面必须照样把判定依据摊开给人看，
+    并明确说明为什么现在还没有可审批的正文。"""
+    from types import SimpleNamespace
+
+    _classified_case(incidents, "inc-1")
+    rows = dashboard.queue_rows(incidents)
+    assert rows and rows[0]["level"] == LEVEL_RED
+
+    settings = SimpleNamespace(
+        incident_database=incidents, factory_database=factory,
+    )
+    st = RecordingStreamlit()
+    dashboard._render_case(st, settings, rows[0], as_of="2026-09-06")
+    rendered = st.joined()
+
+    assert "为什么它到了你面前" in rendered      # 判定依据被渲染
+    assert "RA-001" in rendered                  # 具体那条危险路径
+    assert "还没有可供审批的正文" in rendered     # 诚实说明当前状态
+    assert "驳回" in rendered                    # 仍可在起草前就否掉
+
+
+def test_a_drafted_case_shows_the_body_and_the_four_checks(incidents, factory, corpus):
+    """有稿件时，正文、自检结果与四项强制确认都必须出现在同一屏。"""
+    from types import SimpleNamespace
+    from tests.test_pack_artifacts import _drafted
+
+    _drafted(incidents, factory, corpus)
+    rows = dashboard.queue_rows(incidents)
+    settings = SimpleNamespace(
+        incident_database=incidents, factory_database=factory,
+    )
+    st = RecordingStreamlit()
+    dashboard._render_case(st, settings, rows[0], as_of="2026-09-06")
+    rendered = st.joined()
+
+    assert "将要发给一线的内容" in rendered
+    assert "A hand was caught between the dies." in rendered
+    for _, label in dashboard.APPROVAL_CHECKS:
+        assert label in rendered
+    assert "批准并分发" in rendered
