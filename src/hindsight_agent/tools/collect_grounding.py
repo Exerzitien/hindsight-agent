@@ -47,10 +47,14 @@ from ..corpus_db import (
     record_snapshot,
     upsert_document,
 )
-from ..matching import HAZARD_TERMS
+from ..matching import HAZARD_TERMS, matched_terms
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-USER_AGENT = "Hindsight-Agent/0.1 (grounding corpus collector)"
+from ..config import PROJECT_ROOT
+#: 与 collect_osha 同一个理由：政府站点的边缘防护要求 Mozilla 记号。
+USER_AGENT = (
+    "Mozilla/5.0 (compatible; Hindsight-Agent/0.2; "
+    "+https://github.com/hindsight-agent/hindsight-agent)"
+)
 REQUEST_TIMEOUT = 60
 
 ECFR_API = "https://www.ecfr.gov/api/versioner/v1"
@@ -110,11 +114,10 @@ def tag_hazards(text: str) -> list[str]:
     Reuses ``matching.HAZARD_TERMS`` so the corpus, the matcher and the factory
     risk register all speak one vocabulary instead of three.
     """
-    folded = text.casefold()
     return sorted(
         hazard_id
         for hazard_id, terms in HAZARD_TERMS.items()
-        if any(term in folded for term in terms)
+        if matched_terms(text, terms)
     )
 
 
@@ -122,11 +125,10 @@ def tag_equipment(text: str, equipment_terms: dict[str, list[str]] | None) -> li
     """Tag a passage with site equipment ids, using terms read from the factory DB."""
     if not equipment_terms:
         return []
-    folded = text.casefold()
     return sorted(
         equipment_id
         for equipment_id, terms in equipment_terms.items()
-        if any(term in folded for term in terms)
+        if matched_terms(text, terms)
     )
 
 

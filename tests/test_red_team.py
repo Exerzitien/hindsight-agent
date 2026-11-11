@@ -331,6 +331,24 @@ def test_attack_invent_a_safety_parameter(db, factory, corpus):
     assert any(f.check == CHECK_NUMERALS_SUPPORTED for f in report.findings)
 
 
+def test_a_claim_may_name_the_rule_it_cites(db, factory, corpus):
+    """反向的失败：把守卫开得太紧，删掉的正好是最该留下的那种主张。
+
+    「29 CFR 1910.212 要求……」并且确实引了 1910.212 那一段，此前会因为 29 和
+    1910.212 不在段落正文里而被当成编造数字删掉。来源的标签是这份来源的名字，
+    不是模型编的——这条主张恰恰是把依据说清楚了。
+    """
+    claims = _base_claims() + [
+        Claim("x", CLAIM_REQUIREMENT,
+              "29 CFR 1910.212 requires guards to be affixed to the machine.",
+              "29 CFR 1910.212 exige que los resguardos se fijen a la máquina.",
+              ["corpus:cfr:1910.212#0001"])
+    ]
+    report = _check(_draft(claims), db, factory, corpus)
+    assert "x" not in report.removed_claim_ids
+    assert not [f for f in report.findings if f.check == CHECK_NUMERALS_SUPPORTED]
+
+
 def test_attack_fabricate_a_citation_id_that_looks_real(db, factory, corpus):
     claims = _base_claims() + [
         Claim("x", CLAIM_REQUIREMENT, "OSHA requires quarterly certification.",

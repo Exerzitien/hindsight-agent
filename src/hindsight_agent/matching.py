@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import re
-from typing import Any
+from functools import lru_cache
+from typing import Any, Iterable
 
 from .milvus_store import VectorStore
 from .rag_documents import RagDocument
@@ -21,7 +22,18 @@ HAZARD_TERMS = {
     "haz-compressed-gas": ("compressed gas", "gas cylinder", "pressure release"),
     "haz-crush": ("crush", "crushed", "compressed", "pinned between"),
     "haz-dock-fall": ("loading dock", "fell from dock", "dock edge"),
-    "haz-electrical": ("electrocution", "electrical shock", "energized", "electric"),
+    # 「electric」这个词本身不是电气危险的证据：它命中「electric motor」
+    # 「electric pallet jack」「electric cart」。在最近 500 条事故里，有 30 条
+    # 仅因为这一个词被贴上电气危险——包括一起在收银台绊到风扇线的摔伤——
+    # 而其中一条一路走到了红色告警，把一起皮带绞入事故当作焊接工位触电，
+    # 推给焊工。这正是本项目用定向分发要避免的那种警报疲劳。
+    # 用词干（electrocut 同时命中 electrocution / electrocuted）与真正表明
+    # 带电接触的短语替代它。
+    "haz-electrical": (
+        "electrocut", "electric shock", "electrical shock", "energized",
+        "power line", "powerline", "electrical line", "electrical burn",
+        "exposure to electricity", "live wire", "live circuit", "volt",
+    ),
     "haz-entanglement": ("entangled", "rotating shaft", "pulled into", "caught in machinery"),
     "haz-falling-object": ("falling object", "struck by object", "overhead load"),
     "haz-fire": ("fire", "explosion", "ignition"),
@@ -36,9 +48,27 @@ HAZARD_TERMS = {
 }
 
 
+@lru_cache(maxsize=512)
+def _term_pattern(term: str) -> re.Pattern[str]:
+    return re.compile(r"\b" + re.escape(term), re.IGNORECASE)
+
+
+def matched_terms(text: str, terms: Iterable[str]) -> list[str]:
+    """Which of these hazard terms the text actually uses.
+
+    Matching is anchored at a word start, not anywhere in the string. Plain
+    substring matching reads "unenergized" as "energized" - the opposite of
+    what the narrative says - and that is not a rare edge: it happened in the
+    first 500 rows of the real corpus. A trailing wildcard is deliberate, so
+    one term still covers its inflections: "crush" matches "crushed", "burn"
+    matches "burns", "electrocut" matches both "electrocution" and
+    "electrocuted".
+    """
+    return [term for term in terms if _term_pattern(term).search(text)]
+
+
 def _hazard_evidence(text: str, hazard_id: str) -> tuple[float, list[str]]:
-    folded = text.casefold()
-    matched = [term for term in HAZARD_TERMS.get(hazard_id, ()) if term in folded]
+    matched = matched_terms(text, HAZARD_TERMS.get(hazard_id, ()))
     return (1.0 if matched else 0.0), matched
 
 

@@ -287,6 +287,7 @@ def test_a_routed_case_without_a_draft_still_renders_end_to_end(incidents, facto
 
     settings = SimpleNamespace(
         incident_database=incidents, factory_database=factory,
+        corpus_database=corpus,
     )
     st = RecordingStreamlit()
     dashboard._render_case(st, settings, rows[0], as_of="2026-09-06")
@@ -307,6 +308,7 @@ def test_a_drafted_case_shows_the_body_and_the_four_checks(incidents, factory, c
     rows = dashboard.queue_rows(incidents)
     settings = SimpleNamespace(
         incident_database=incidents, factory_database=factory,
+        corpus_database=corpus,
     )
     st = RecordingStreamlit()
     dashboard._render_case(st, settings, rows[0], as_of="2026-09-06")
@@ -317,3 +319,75 @@ def test_a_drafted_case_shows_the_body_and_the_four_checks(incidents, factory, c
     for _, label in dashboard.APPROVAL_CHECKS:
         assert label in rendered
     assert "批准并分发" in rendered
+
+
+# --------------------------------------------------------------------------
+# 审批人得看得到出处原文
+# --------------------------------------------------------------------------
+
+def test_the_approver_can_read_the_source_behind_every_citation(
+    incidents, factory, corpus
+):
+    """第二项确认要求人抽查一条引用确实支持该说法。
+
+    在这之前控制台只给出 `corpus:cfr:1910.212#0001` 这样一个 id，人没法在这
+    个界面里完成他签字确认自己做过的那件事。G4 能验证引用解析得到、数值没被
+    编造，但它验不了一句转述有没有把法规的意思说反——那件事只有人能做，前提
+    是把原文摆在他面前。
+    """
+    from types import SimpleNamespace
+
+    from hindsight_agent.content import (
+        DraftClaimModel,
+        GeneratedDraftModel,
+        generate_learning_draft,
+    )
+
+    cited = GeneratedDraftModel(briefing_claims=[
+        DraftClaimModel(claim_id="c1", claim_type="INCIDENT_FACT",
+                        text_en="A hand was caught between the dies.",
+                        text_es="Una mano quedó atrapada entre los troqueles.",
+                        citations=["incident:inc-1"]),
+        DraftClaimModel(claim_id="c2", claim_type="SITE_FACT",
+                        text_en="We run the same task here.",
+                        text_es="Realizamos la misma tarea aquí.",
+                        citations=["site:risk-1"]),
+        DraftClaimModel(claim_id="c3", claim_type="REQUIREMENT",
+                        text_en="Guards shall be affixed to the machine.",
+                        text_es="Los resguardos deben fijarse a la máquina.",
+                        citations=["corpus:cfr:1910.212#0001"]),
+    ])
+    result = generate_learning_draft(
+        corpus_database=corpus, factory_database=factory,
+        incident_database=incidents, risk_assessment_id="risk-1",
+        incident_key="inc-1", incident_narrative=GOOD_NARRATIVE,
+        incident_title="Press die crush", generator=ScriptedGenerator(cited),
+    )
+    pack = render_pack(result["draft"])
+    settings = SimpleNamespace(
+        incident_database=incidents, factory_database=factory,
+        corpus_database=corpus,
+    )
+
+    st = RecordingStreamlit()
+    dashboard.render_sources(st, settings, pack, "risk-1")
+    rendered = st.joined()
+
+    assert "29 CFR 1910.212" in rendered, "没有告诉人这是哪一条"
+    assert "Guards shall be affixed to the machine." in rendered, "法规原文没有出现"
+    assert GOOD_NARRATIVE[:40] in rendered, "事故原文没有出现"
+
+
+def test_every_citation_in_the_pack_is_offered_for_checking(incidents, factory, corpus):
+    from hindsight_agent.content import generate_learning_draft
+
+    result = generate_learning_draft(
+        corpus_database=corpus, factory_database=factory,
+        incident_database=incidents, risk_assessment_id="risk-1",
+        incident_key="inc-1", incident_narrative=GOOD_NARRATIVE,
+        incident_title="Press die crush", generator=ScriptedGenerator(_good()),
+    )
+    citations = dashboard.pack_citations(render_pack(result["draft"]))
+    assert "incident:inc-1" in citations
+    assert "site:risk-1" in citations
+    assert len(citations) == len(set(citations)), "同一条出处不该重复列两遍"

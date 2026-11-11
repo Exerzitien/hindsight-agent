@@ -308,7 +308,13 @@ def _check_claim(claim: Claim, resolver: SourceResolver) -> list[ClaimFinding]:
                 ClaimFinding(claim.claim_id, CHECK_QUOTE_VERBATIM, "引文与来源不逐字一致")
             )
 
-    combined = " ".join(s["text"] for s in resolved)
+    # 来源的标签也算来源。一条写着「29 CFR 1910.147 要求……」并且确实引了
+    # 1910.147 那一段的主张，此前会因为 29 和 1910.147 不在正文里而被当成
+    # 编造数字删掉——删的正好是最该留下的那种主张：说清楚自己依据哪一条。
+    # 标签是这份来源的名字，不是模型编的。
+    combined = " ".join(
+        f"{s['text']} {s.get('label') or ''}" for s in resolved
+    )
     supported = set(normalize_numerals(combined))
     english_numerals = set(normalize_numerals(claim.text_en))
     unsupported = sorted(english_numerals - supported)

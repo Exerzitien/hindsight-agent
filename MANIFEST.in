@@ -1,0 +1,23 @@
+# 源码发行包要能独立复现整个项目，而不只是 import 得动。
+#
+# setuptools 默认只打进 src/ 与 README/LICENSE：docs、scripts、docker-compose
+# 和 .env 模板全都不在里面。拿到这样一个 tar.gz 的人，装得上包，却看不到架构
+# 文档、没有一键脚本、也不知道有哪些环境变量——等于拿到半个项目。
+
+include README.md
+include LICENSE
+include DATABASE_DICTIONARY_ZH.md
+include STANDARD_ALIGNMENT_ZH.md
+include .env.example
+include docker-compose.yml
+
+recursive-include docs *.md *.mmd *.svg *.png *.excalidraw
+recursive-include scripts *.sh *.ps1 *.py
+recursive-include tests *.py
+recursive-include src/hindsight_agent/seed *.json
+
+# data/ 是采集出来的（100MB+），volumes/ 是 Milvus 的运行时数据，都不进包。
+prune data
+prune volumes
+prune project
+global-exclude *.py[cod] .DS_Store

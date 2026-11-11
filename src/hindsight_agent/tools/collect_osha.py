@@ -21,8 +21,15 @@ from strands import tool
 
 
 OSHA_SIR_PAGE = "https://www.osha.gov/severe-injury-reports"
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-USER_AGENT = "Hindsight-Agent/0.1 (official OSHA SIR collector)"
+from ..config import PROJECT_ROOT
+#: osha.gov 的边缘防护会对不带 Mozilla 记号的 User-Agent 直接回 403，
+#: 于是「clone 完跑采集」这一步在任何新机器上都是失败的。这里用的是
+#: 爬虫惯用的 compatible 写法：仍然如实自报家门（名字、版本、来源），
+#: 只是把过滤器要求的记号带上——不伪装成浏览器。
+USER_AGENT = (
+    "Mozilla/5.0 (compatible; Hindsight-Agent/0.2; "
+    "+https://github.com/hindsight-agent/hindsight-agent)"
+)
 
 
 class CollectionError(RuntimeError):

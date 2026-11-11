@@ -11,7 +11,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from .config import PROJECT_ROOT
 DEFAULT_DATABASE_PATH = PROJECT_ROOT / "data" / "factory" / "factory.db"
 DEFAULT_ZH_DATABASE_PATH = PROJECT_ROOT / "data" / "factory" / "factory_zh.db"
 DEFAULT_SEED_PATH = Path(__file__).resolve().parent / "seed" / "demo_metal_factory.json"

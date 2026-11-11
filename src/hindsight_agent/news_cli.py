@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 
@@ -10,6 +11,10 @@ from .tools.collect_osha_news import collect_osha_news_impl
 
 
 def main() -> int:
+    # 同 collector_cli：没有 argparse 的 CLI，--help 会变成一次真实的网络采集。
+    argparse.ArgumentParser(
+        description="确定性采集 OSHA 官方新闻 RSS，并抽取正文写入快照。",
+    ).parse_args()
     try:
         result = collect_osha_news_impl()
     except CollectionError as exc:
@@ -22,4 +27,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

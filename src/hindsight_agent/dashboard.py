@@ -309,6 +309,67 @@ def render_certificate(st, certificate) -> None:
     )
 
 
+def pack_citations(pack: dict[str, Any]) -> list[str]:
+    """Every distinct source id the pack rests on, in the order it is read.
+
+    Both language renderings carry the same ids, so the English body is enough.
+    """
+    found: list[str] = []
+    for kind in ("briefing", "toolbox_talk"):
+        body = (pack.get(kind) or {}).get("en") or {}
+        groups = list(body.get("sections") or []) + list(body.get("blocks") or [])
+        for group in groups:
+            for line in group.get("lines") or []:
+                for citation in line.get("citations") or []:
+                    if citation not in found:
+                        found.append(citation)
+    return found
+
+
+def render_sources(st, settings, pack: dict[str, Any], risk_assessment_id: str) -> None:
+    """The text behind every citation, so the approver can actually check one.
+
+    The approval checklist asks a person to confirm that a cited source really
+    supports the claim. Until this existed the console showed them only an id -
+    ``corpus:cfr:1910.147#0011`` - so the one check the gate depends on could
+    not be performed without leaving the screen. G4 verifies that a citation
+    resolves and that no numeral was invented; it cannot tell whether a
+    paraphrase inverted the rule it points at. A person can, but only if they
+    are shown the rule.
+    """
+    # 绝对导入，和本文件其余所有导入一致：控制台是被当作脚本跑的
+    # （streamlit run dashboard.py），相对导入在那里会直接抛
+    # "attempted relative import with no known parent package"，
+    # 表现为整个「待你决定」页打不开。
+    from hindsight_agent.self_check import SourceResolver
+
+    corpus_database = settings.corpus_database
+    try:
+        resolver = SourceResolver(
+            corpus_database=corpus_database,
+            factory_database=settings.factory_database,
+            incident_database=settings.incident_database,
+            risk_assessment_id=risk_assessment_id,
+        )
+    except Exception as exc:  # noqa: BLE001 - 读不到语料不该让审批界面崩掉
+        st.warning(f"读不到出处语料库，无法展开原文：{exc}")
+        return
+
+    for citation in pack_citations(pack):
+        source = None
+        try:
+            source = resolver.resolve(citation)
+        except Exception:  # noqa: BLE001
+            source = None
+        if source is None:
+            st.error(f"`{citation}` 解析不到来源。这条主张不该出现在这里。")
+            continue
+        st.markdown(f"**`{citation}`** · {source.get('label') or '—'}")
+        text = str(source.get("text") or "").strip()
+        excerpt = text[:1500] + ("…" if len(text) > 1500 else "")
+        st.markdown("> " + excerpt.replace("\n", "\n> "))
+
+
 def render_pack_body(st, pack: dict[str, Any]) -> None:
     """稿件正文，每一行都带着它的出处。"""
     english, spanish = st.tabs(["English", "Español"])
@@ -757,6 +818,13 @@ def _render_case(st, settings, case: dict[str, Any], *, as_of: str) -> None:
         f"版本 {artifact['pack_version']}"
     )
     render_pack_body(st, pack)
+
+    with st.expander("出处原文（逐条核对）", expanded=False):
+        st.caption(
+            "上面每条主张标注的出处，在这里能读到原文。"
+            "第二项确认要求你抽查一条——请在这里查。"
+        )
+        render_sources(st, settings, pack, case["risk_assessment_id"] or "")
 
     check = artifact["self_check"]
     if check:

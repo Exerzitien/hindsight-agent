@@ -1,7 +1,7 @@
 # 29 个功能点落地对照
 
 对应 Notion《Hindsight Agent 功能工作流 V1.0》。**P0 共 22 个，全部落地。**
-最后核对 2026-09-07 · 100 项测试通过。
+最后核对 2026-09-08 · 236 项测试通过。
 
 一条命令跑完整链路：
 
@@ -17,7 +17,7 @@ hindsight-workflow --limit 500 --draft  # 另外对红/黄级调用模型起草�
 | S1 | 工厂档案录入 | `factory_db.py`，20 设备 / 97 风险评估 / 66 控制验证，对齐 5 项 ISO/IEC | 缺失字段显式为 unknown，判定时降级为 UNKNOWN 而非 False |
 | S2 | 档案向量索引 | `rag_documents.build_factory_risk_documents` + `milvus_store` | 内容哈希驱动重索引 |
 | S3 | 规则包 v1 初始化 | `rule_pack.initialize`，保守默认（静音空、预算 5 条/周） | 版本化，见 R4 |
-| S4 | 分发渠道配置 | `distribution.register_channels`，4 个渠道按班次/岗位/语言 | demo 用模拟收件箱 `data/outbox/mock_inbox.jsonl` |
+| S4 | 分发渠道配置 | `distribution.register_channels`，15 个渠道按班次/岗位/语言，覆盖登记册暴露的全部 7 个岗位 × 英西双语 | demo 用模拟收件箱 `data/outbox/mock_inbox.jsonl`；岗位无渠道时返回 `APPROVED_BUT_NO_CHANNEL`，不退回广播 |
 
 ## 阶段 1 · 每日感知与调查
 
@@ -27,7 +27,7 @@ hindsight-workflow --limit 500 --draft  # 另外对红/黄级调用模型起草�
 | W2 | 拉取事故流 | `tools/collect_osha.py` + `collect_osha_news.py`，SHA-256 快照 | F1：抓取失败保留 last-good cursor，不静默假装成功 |
 | W3 | 去重与 Case Memory | `workflow_db` 状态机 + `open_case` 幂等 | 重跑 500 条，新增案例 **0** |
 | W4 | 结构化抽取 + 置信度 | `screening.extract_with_confidence`，字段完整度 + OIICS 弱标签一致性 | F2：低于 0.55 进 `quarantine`，每日抽检 10 条 |
-| W5a | **硬过滤** | `screening.hard_filter`，NAICS 邻近 + 本厂危险词表 + 静音项 | **105,996 条 → 剔除 87.1%，0.5 秒，零模型调用** |
+| W5a | **硬过滤** | `screening.hard_filter`，NAICS 邻近 + 本厂危险词表 + 静音项 | **105,996 条 → 剔除 87.2%，3.1 秒，零模型调用** |
 | W5b | 向量粗排 | `milvus_store.search_factory` top-k；无向量库时回落到确定性候选检索 | 可注入 `candidate_finder` |
 | W5c | 证据调查 | `transfer.assess_paths` 残余路径验证（确定性图遍历，强于 LLM 自述证据） | 五条优先级规则，各有独立测试 |
 | V1 | 相关性分级 | `transfer.route_path` 红/黄/绿/无关 | F3：**UNKNOWN 永不进红**，高严重×低置信强制降黄 |
@@ -38,7 +38,7 @@ hindsight-workflow --limit 500 --draft  # 另外对红/黄级调用模型起草�
 - 路径节流：同一条危险路径已在某人面前时，第二起事故作为佐证归档，不重复开案
 - 提醒预算：超出规则包 `weekly_alert_budget` 的红降为黄进批量确认，**不丢弃**
 
-实测 500 条事故 → 静默归档 495、进入人工队列 5（5 条不同路径）。
+实测 500 条事故 → 静默归档 496、进入人工队列 4（4 条不同路径）。
 
 ## 阶段 2 · 内容生成
 
@@ -114,3 +114,4 @@ numerals_must_be_sourced                数值必须来自来源
 | `distribution.py` | S4 · D1–D5 |
 | `workflow.py` | 总编排 W1→D5 |
 | `tests/test_workflow.py` | 34 项 |
+| `tests/test_distribution_coverage.py` | 渠道表与登记册岗位 id 的漂移守卫 |

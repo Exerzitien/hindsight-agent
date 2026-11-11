@@ -346,7 +346,7 @@ def draft_for_routed(
     """G1–G4 for the cases that survived routing, then queue them for approval."""
     from .content import generate_learning_draft
 
-    drafted, needs_writer = [], []
+    drafted, needs_writer, failed = [], [], []
     for item in routed[:limit]:
         case_id = item["case_id"]
         path_id = item["routing"].get("driving_path")
@@ -354,16 +354,30 @@ def draft_for_routed(
             continue
         transition(incident_database, case_id, DRAFTED, actor="agent",
                    reason_code="DRAFT_STARTED", run_id=run_id)
-        result = generate_learning_draft(
-            corpus_database=corpus_database,
-            factory_database=factory_database,
-            incident_database=incident_database,
-            risk_assessment_id=path_id,
-            incident_key=item["incident_key"],
-            incident_narrative=str(item["record"].get("narrative") or ""),
-            incident_title=str(item["record"].get("source_title") or ""),
-            generator=generator,
-        )
+        try:
+            result = generate_learning_draft(
+                corpus_database=corpus_database,
+                factory_database=factory_database,
+                incident_database=incident_database,
+                risk_assessment_id=path_id,
+                incident_key=item["incident_key"],
+                incident_narrative=str(item["record"].get("narrative") or ""),
+                incident_title=str(item["record"].get("source_title") or ""),
+                generator=generator,
+            )
+        except Exception as error:  # noqa: BLE001 - 见下
+            # 一个抛异常的模型端点不该丢掉刚跑完的整轮筛选。这里接住的范围
+            # 故意开得很宽：超时、连接断开、上下文溢出、回复两次都解析不出来，
+            # 对这条案例的后果是同一个——没有稿件，得有人来写。案例落在
+            # NEEDS_HUMAN_WRITER 而不是原地悬空，理由码写明是哪一类失败，
+            # 于是它出现在控制台里，而不是消失在一条日志里。
+            transition(incident_database, case_id, NEEDS_HUMAN_WRITER, actor="agent",
+                       reason_code="DRAFT_FAILED",
+                       detail=f"{type(error).__name__}: {error}"[:500],
+                       run_id=run_id)
+            failed.append({"case_id": case_id,
+                           "error": f"{type(error).__name__}: {error}"})
+            continue
         report = result["self_check_reports"][-1]
         if result["needs_human_writer"]:
             transition(incident_database, case_id, NEEDS_HUMAN_WRITER, actor="agent",
@@ -387,7 +401,8 @@ def draft_for_routed(
         drafted.append({"case_id": case_id, "content_hash": content_hash,
                         "pack": result["pack"]})
 
-    return {"drafted": drafted, "needs_human_writer": needs_writer}
+    return {"drafted": drafted, "needs_human_writer": needs_writer,
+            "failed": failed}
 
 
 def _exposed_role_for_case(
@@ -586,6 +601,7 @@ def run_full_workflow(
         corpus_database=corpus_database, routed=screened["routed"],
         generator=generator, run_id=run_id, limit=draft_limit,
     ) if generator is not None else {"drafted": [], "needs_human_writer": [],
+                                     "failed": [],
                                      "skipped": "no generator configured"}
     reminders = run_reminders(incident_database)
     return {
@@ -596,7 +612,9 @@ def run_full_workflow(
         "demoted_over_budget": screened["demoted_over_budget"],
         "rule_pack_version": screened["rule_pack_version"],
         "drafts": {"drafted": len(drafts.get("drafted", [])),
-                   "needs_human_writer": len(drafts.get("needs_human_writer", []))},
+                   "needs_human_writer": len(drafts.get("needs_human_writer", [])),
+                   "failed": len(drafts.get("failed", [])),
+                   "failures": drafts.get("failed", [])},
         "reminders_sent": len(reminders),
         "awaiting_approval": len(cases_in_state(incident_database, [PENDING_APPROVAL])),
         "digest": monday_digest(incident_database),

@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 
-from .matching import HAZARD_TERMS
+from .matching import HAZARD_TERMS, matched_terms
 from .workflow_db import connect, new_id, utc_now
 
 SCREENING_VERSION = "screening-v1.0"
@@ -271,7 +271,7 @@ def hard_filter(
     muted = set(rule_pack_payload.get("muted_hazards", []))
     matched = sorted(
         hazard for hazard, terms in vocabulary.items()
-        if any(term in text for term in terms)
+        if matched_terms(text, terms)
     )
     if not matched:
         return ScreenResult(key, False, R_NO_SITE_HAZARD_TERM, industry_relation=relation)

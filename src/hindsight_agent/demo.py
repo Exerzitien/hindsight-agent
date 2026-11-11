@@ -96,9 +96,22 @@ def check_model(*, timeout: float = 20.0) -> dict[str, Any]:
         ) from error
     elapsed = time.monotonic() - started
     reply = (response.choices[0].message.content or "").strip()
+
+    # 上下文有多大，和「连不连得上」同等重要：一次起草的提示词是四位数
+    # token，而本地端点常常默认只装 4096。把它当作前置检查的一部分报出来，
+    # 人就能在跑之前知道这台机器上会不会因为窗口太小而写不出东西。
+    from .content import discover_context_window, plan_budget
+
+    context_tokens, context_source = discover_context_window(base_url, model_id)
+    budget = plan_budget(context_tokens, source=context_source)
     return {"provider": "openai", "checked": True, "base_url": base_url,
             "model_id": model_id, "latency_s": round(elapsed, 2),
-            "reply_sample": reply[:60]}
+            "reply_sample": reply[:60],
+            "context_tokens": budget.context_tokens,
+            "context_source": budget.source,
+            "context_known": context_tokens is not None,
+            "prompt_tokens": budget.prompt_tokens,
+            "completion_tokens": budget.completion_tokens}
 
 
 def check_data(settings) -> dict[str, Any]:
@@ -227,6 +240,14 @@ def run_demo(
             _say("模型可达",
                  f"{model_info['model_id']} @ {model_info['base_url']} "
                  f"（{model_info['latency_s']}s）")
+            _say("上下文",
+                 f"{model_info['context_tokens']} token"
+                 f"（{model_info['context_source']}）· "
+                 f"提示词 {model_info['prompt_tokens']} / "
+                 f"回答 {model_info['completion_tokens']}")
+            if model_info["context_tokens"] < 8192:
+                _say("提示", "窗口偏小，本项目会自动少放语料以装得下。"
+                             "用 ≥8192 的上下文重新装载模型，稿件会明显更实。")
         else:
             _say("模型", model_info["note"])
         from .content import build_generator
@@ -263,6 +284,11 @@ def run_demo(
     if result["drafts"]["needs_human_writer"]:
         _say("需人工补写", f"{result['drafts']['needs_human_writer']} 条"
                           "（自检删完无出处主张后填不满必需段落）")
+    if result["drafts"].get("failed"):
+        # 起草失败不静默：它和「写得不好」是两回事，通常意味着端点出了问题。
+        _say("起草失败", f"{result['drafts']['failed']} 条（已落到需人工补写）")
+        for failure in result["drafts"].get("failures", [])[:3]:
+            _say("  ↳", f"{failure['case_id']} · {failure['error'][:160]}")
 
     if generator is not None:
         quality = drafting_quality(settings.incident_database)

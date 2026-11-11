@@ -313,3 +313,58 @@ def test_approving_into_a_role_with_no_channel_is_loud(incidents, factory, corpu
     )]
     connection.close()
     assert "NO_CHANNEL_FOR_ROLE" in kinds
+
+
+# --------------------------------------------------------------------------
+# 端点出问题时，这一轮筛选不能白跑
+# --------------------------------------------------------------------------
+
+def test_a_failing_model_costs_one_case_not_the_whole_run(incidents, factory, corpus):
+    """一个抛异常的模型端点，不该丢掉刚跑完的整轮筛选。
+
+    起草是逐条调模型的：第三条超时，不该让前两条已经写好的稿件跟着消失，
+    也不该让 500 条事故的筛选结果作废。失败的那条落到「需人工补写」，
+    理由码写明它是失败而不是写得不够，于是它出现在控制台里，而不是消失在
+    一条日志里。
+    """
+    from hindsight_agent.workflow_db import NEEDS_HUMAN_WRITER, connect
+
+    good_case = _classified_case(incidents, "inc-1")
+    bad_case = _classified_case(incidents, "inc-2")
+
+    class _DiesOnTheSecondCall:
+        model_id = "flaky"
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def __call__(self, prompt: str):
+            self.calls += 1
+            if self.calls == 1:
+                return _good()
+            raise TimeoutError("端点没有响应")
+
+    routed = _routed(good_case, "inc-1") + _routed(bad_case, "inc-2")
+    result = draft_for_routed(
+        incident_database=incidents, factory_database=factory,
+        corpus_database=corpus, routed=routed,
+        generator=_DiesOnTheSecondCall(),
+    )
+
+    assert len(result["drafted"]) == 1, "好的那一条也被拖下水了"
+    assert [f["case_id"] for f in result["failed"]] == [bad_case]
+    assert "TimeoutError" in result["failed"][0]["error"]
+
+    connection = connect(incidents)
+    try:
+        state = connection.execute(
+            "SELECT state FROM cases WHERE case_id=?", (bad_case,)
+        ).fetchone()["state"]
+        reason = connection.execute(
+            "SELECT reason_code FROM case_transitions WHERE case_id=? "
+            "ORDER BY seq DESC LIMIT 1", (bad_case,)
+        ).fetchone()["reason_code"]
+    finally:
+        connection.close()
+    assert state == NEEDS_HUMAN_WRITER
+    assert reason == "DRAFT_FAILED"

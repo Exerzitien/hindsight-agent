@@ -50,13 +50,47 @@ REMINDER_T72 = "T+72h"
 # S4 · 渠道注册表
 # --------------------------------------------------------------------------
 
+#: 渠道注册表必须覆盖风险登记册暴露的每一个岗位，两种语言都要有。
+#:
+#: 这里曾经漂移过，而漂移是静默的：叉车渠道写的是 ``role-forklift-operator``，
+#: 而登记册里的岗位 id 是 ``role-forklift``——两个字符串对不上，于是定向分发
+#: 永远解析到零个渠道。批准照常成功，稿件一个人也没收到。登记册暴露 7 个岗位，
+#: 而这张表原本只覆盖其中 1 个：演示里三条起草出来的案例，有两条批准后无人可发。
+#:
+#: 表是写死的、不是从工厂库推导的：渠道代表真实存在的班组和人数，不能由危险
+#: 路径凭空生成。但写死就会漂移，所以 tests/test_distribution_coverage.py 会
+#: 拿本模块和 seed 里的岗位逐一对照。
 DEFAULT_CHANNELS: tuple[dict[str, Any], ...] = (
     {"channel_id": "ch-stamping-a", "name": "冲压区 A 班", "kind": "mock_inbox",
      "shift": "A", "role_id": "role-press-operator", "language": "en", "member_count": 12},
     {"channel_id": "ch-stamping-a-es", "name": "冲压区 A 班（西语）", "kind": "mock_inbox",
      "shift": "A", "role_id": "role-press-operator", "language": "es", "member_count": 5},
-    {"channel_id": "ch-warehouse-b", "name": "仓储区 B 班", "kind": "mock_inbox",
-     "shift": "B", "role_id": "role-forklift-operator", "language": "en", "member_count": 8},
+    {"channel_id": "ch-weld-a", "name": "焊接区 A 班", "kind": "mock_inbox",
+     "shift": "A", "role_id": "role-welder", "language": "en", "member_count": 9},
+    {"channel_id": "ch-weld-a-es", "name": "焊接区 A 班（西语）", "kind": "mock_inbox",
+     "shift": "A", "role_id": "role-welder", "language": "es", "member_count": 6},
+    {"channel_id": "ch-weld-robot", "name": "机器人焊接单元", "kind": "mock_inbox",
+     "shift": "A", "role_id": "role-weld-tech", "language": "en", "member_count": 4},
+    {"channel_id": "ch-weld-robot-es", "name": "机器人焊接单元（西语）", "kind": "mock_inbox",
+     "shift": "A", "role_id": "role-weld-tech", "language": "es", "member_count": 2},
+    {"channel_id": "ch-machining-b", "name": "机加工区 B 班", "kind": "mock_inbox",
+     "shift": "B", "role_id": "role-machinist", "language": "en", "member_count": 10},
+    {"channel_id": "ch-machining-b-es", "name": "机加工区 B 班（西语）", "kind": "mock_inbox",
+     "shift": "B", "role_id": "role-machinist", "language": "es", "member_count": 4},
+    {"channel_id": "ch-warehouse-b", "name": "仓储区 B 班（叉车）", "kind": "mock_inbox",
+     "shift": "B", "role_id": "role-forklift", "language": "en", "member_count": 8},
+    {"channel_id": "ch-warehouse-b-es", "name": "仓储区 B 班（叉车 · 西语）",
+     "kind": "mock_inbox", "shift": "B", "role_id": "role-forklift",
+     "language": "es", "member_count": 7},
+    {"channel_id": "ch-dock", "name": "装卸月台", "kind": "mock_inbox",
+     "shift": "B", "role_id": "role-dock", "language": "en", "member_count": 6},
+    {"channel_id": "ch-dock-es", "name": "装卸月台（西语）", "kind": "mock_inbox",
+     "shift": "B", "role_id": "role-dock", "language": "es", "member_count": 5},
+    {"channel_id": "ch-chemical", "name": "表面处理与化学品", "kind": "mock_inbox",
+     "shift": "A", "role_id": "role-chemical", "language": "en", "member_count": 5},
+    {"channel_id": "ch-chemical-es", "name": "表面处理与化学品（西语）",
+     "kind": "mock_inbox", "shift": "A", "role_id": "role-chemical",
+     "language": "es", "member_count": 3},
     {"channel_id": "ch-ehs", "name": "EHS 与主管", "kind": "mock_inbox",
      "shift": None, "role_id": "role-ehs-manager", "language": "en", "member_count": 3},
 )
